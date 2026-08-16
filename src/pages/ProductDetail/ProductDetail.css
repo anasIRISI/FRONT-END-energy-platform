@@ -1,0 +1,327 @@
+.product-detail {
+  min-height: 100vh;
+  padding: 40px 0;
+}
+
+.back-btn {
+  background: transparent;
+  color: var(--primary-color);
+  font-weight: 500;
+  margin-bottom: 32px;
+  padding: 8px 0;
+  transition: var(--transition);
+}
+
+.back-btn:hover {
+  opacity: 0.7;
+}
+
+.product-hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: center;
+  margin-bottom: 64px;
+}
+
+.product-hero-image {
+  position: relative;
+  background: linear-gradient(135deg, #f8f9fa, #e8f4f8);
+  border-radius: 24px;
+  padding: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.product-image-display {
+  font-size: 10rem;
+}
+
+.product-badge {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  background: var(--secondary-color);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 24px;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.product-hero-content h1 {
+  margin-bottom: 16px;
+}
+
+.product-intro {
+  font-size: 1.25rem;
+  margin-bottom: 32px;
+  line-height: 1.6;
+}
+
+.product-price-section {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  padding: 32px;
+}
+
+.price-info {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 24px;
+}
+
+.price-label {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.price-amount {
+  font-size: 3rem;
+  font-weight: 600;
+  color: var(--primary-color);
+  margin-bottom: 4px;
+}
+
+.price-note {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.product-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.product-actions .btn {
+  flex: 1;
+}
+
+.product-content {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  gap: 32px;
+  align-items: start;
+}
+
+.product-main {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.specifications-section h2,
+.features-section h2,
+.advantages-section h2,
+.process-section h2 {
+  margin-bottom: 24px;
+}
+
+.specifications-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.spec-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+}
+
+.spec-label {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.spec-value {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.features-list {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+.features-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+}
+
+.features-list li svg {
+  flex-shrink: 0;
+}
+
+.features-list li span {
+  color: var(--text-secondary);
+}
+
+.advantages-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 24px;
+}
+
+.advantage-card {
+  text-align: center;
+  padding: 32px;
+}
+
+.advantage-icon {
+  font-size: 3rem;
+  margin-bottom: 16px;
+}
+
+.advantage-card h3 {
+  margin-bottom: 12px;
+  color: var(--text-primary);
+}
+
+.advantage-card p {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.process-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 32px;
+}
+
+.process-step {
+  text-align: center;
+}
+
+.step-number {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  color: white;
+  font-size: 1.5rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+}
+
+.process-step h3 {
+  margin-bottom: 8px;
+  font-size: 1.125rem;
+  color: var(--text-primary);
+}
+
+.process-step p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.product-sidebar {
+  position: sticky;
+  top: 100px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.cta-card h3,
+.help-card h3,
+.info-card h3 {
+  margin-bottom: 12px;
+}
+
+.cta-card p,
+.help-card p,
+.info-card p {
+  margin-bottom: 20px;
+  font-size: 0.9375rem;
+}
+
+.cta-card .btn,
+.help-card .btn {
+  width: 100%;
+}
+
+.primes-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.primes-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  font-size: 0.9375rem;
+}
+
+.prime-icon {
+  font-size: 1.5rem;
+}
+
+@media (max-width: 1024px) {
+  .product-hero {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .product-hero-image {
+    padding: 60px;
+  }
+
+  .product-image-display {
+    font-size: 8rem;
+  }
+
+  .product-content {
+    grid-template-columns: 1fr;
+  }
+
+  .product-sidebar {
+    position: static;
+  }
+}
+
+@media (max-width: 768px) {
+  .product-hero-image {
+    padding: 40px;
+  }
+
+  .product-image-display {
+    font-size: 6rem;
+  }
+
+  .price-amount {
+    font-size: 2.5rem;
+  }
+
+  .product-actions {
+    flex-direction: column;
+  }
+
+  .specifications-grid,
+  .features-list,
+  .advantages-grid,
+  .process-steps {
+    grid-template-columns: 1fr;
+  }
+}

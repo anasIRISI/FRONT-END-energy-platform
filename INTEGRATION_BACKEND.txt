@@ -1,0 +1,600 @@
+🔗 GUIDE D'INTÉGRATION BACKEND SPRING BOOT
+============================================
+
+📋 SITUATION ACTUELLE
+---------------------
+✅ Frontend React : 100% COMPLET
+❌ Backend Spring Boot : À DÉVELOPPER
+❌ Base de données : À CRÉER
+
+⚠️ POURQUOI LES DONNÉES NE S'AFFICHENT PAS ?
+--------------------------------------------
+C'est NORMAL car actuellement :
+- Les données visiteur sont mockées (simulées)
+- Les données admin sont mockées (simulées)
+- Pas de communication entre les deux
+- Pas de persistance en base de données
+
+🎯 OBJECTIF FINAL
+-----------------
+VISITEUR → BACKEND API → BASE DE DONNÉES → BACKEND API → ADMIN
+
+📁 FICHIERS FRONTEND À MODIFIER (3 fichiers principaux)
+========================================================
+
+1️⃣ src/services/api.js
+-------------------------
+ACTUELLEMENT (données mockées):
+```javascript
+export const submitFormulaire = async (data) => {
+  // Mock API call
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({ id: Date.now(), ...data });
+    }, 1000);
+  });
+};
+```
+
+À REMPLACER PAR (appel API réel):
+```javascript
+const API_BASE_URL = 'http://localhost:8080/api';
+
+export const submitFormulaire = async (data) => {
+  const response = await fetch(`${API_BASE_URL}/formulaires`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data)
+  });
+  
+  if (!response.ok) {
+    throw new Error('Erreur lors de l\'envoi du formulaire');
+  }
+  
+  return response.json();
+};
+
+export const getFormulaires = async () => {
+  const response = await fetch(`${API_BASE_URL}/formulaires`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    }
+  });
+  return response.json();
+};
+
+export const getFormulaireById = async (id) => {
+  const response = await fetch(`${API_BASE_URL}/formulaires/${id}`);
+  return response.json();
+};
+
+export const updateFormulaire = async (id, data) => {
+  const response = await fetch(`${API_BASE_URL}/formulaires/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data)
+  });
+  return response.json();
+};
+
+export const deleteFormulaire = async (id) => {
+  const response = await fetch(`${API_BASE_URL}/formulaires/${id}`, {
+    method: 'DELETE',
+  });
+  return response.json();
+};
+
+// API Rendez-vous
+export const submitRendezVous = async (data) => {
+  const response = await fetch(`${API_BASE_URL}/rendez-vous`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data)
+  });
+  return response.json();
+};
+
+export const getRendezVous = async () => {
+  const response = await fetch(`${API_BASE_URL}/rendez-vous`);
+  return response.json();
+};
+
+// API Admin Login
+export const adminLogin = async (credentials) => {
+  const response = await fetch(`${API_BASE_URL}/admin/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(credentials)
+  });
+  return response.json(); // Retourne { token, user }
+};
+```
+
+2️⃣ src/pages/Admin/Dashboard/AdminDashboard.jsx
+-------------------------------------------------
+ACTUELLEMENT (ligne 6-45 environ):
+```javascript
+const [stats, setStats] = useState({
+  totalFormulaires: 145,
+  formulairesEnAttente: 23,
+  // ... données mockées
+});
+
+const [recentForms, setRecentForms] = useState([
+  { id: 1, nom: 'Sophie Dubois', ... },
+  // ... données mockées
+]);
+```
+
+À REMPLACER PAR:
+```javascript
+import { getFormulaires, getRendezVous } from '../../../services/api';
+
+const [stats, setStats] = useState({
+  totalFormulaires: 0,
+  formulairesEnAttente: 0,
+  rdvProgrammes: 0,
+  rdvAujourdhui: 0,
+});
+
+const [recentForms, setRecentForms] = useState([]);
+const [appointments, setAppointments] = useState([]);
+const [loading, setLoading] = useState(true);
+
+useEffect(() => {
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Récupérer les formulaires depuis le backend
+      const formulaires = await getFormulaires();
+      setRecentForms(formulaires);
+      
+      // Récupérer les rendez-vous depuis le backend
+      const rdv = await getRendezVous();
+      setAppointments(rdv);
+      
+      // Calculer les statistiques
+      setStats({
+        totalFormulaires: formulaires.length,
+        formulairesEnAttente: formulaires.filter(f => f.statut === 'En attente').length,
+        rdvProgrammes: rdv.length,
+        rdvAujourdhui: rdv.filter(r => r.date === new Date().toISOString().split('T')[0]).length,
+      });
+      
+    } catch (error) {
+      console.error('Erreur lors du chargement des données:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  fetchData();
+}, []);
+
+// Ajouter un state de loading dans le JSX
+if (loading) {
+  return <div className="loading">Chargement des données...</div>;
+}
+```
+
+3️⃣ src/pages/Admin/Login/AdminLogin.jsx
+-----------------------------------------
+ACTUELLEMENT (ligne 12-24 environ):
+```javascript
+const handleLogin = (e) => {
+  e.preventDefault();
+  
+  // Authentification simple (à remplacer par API backend)
+  if (credentials.username === 'admin' && credentials.password === 'admin123') {
+    localStorage.setItem('admin_token', 'demo_token');
+    localStorage.setItem('admin_user', JSON.stringify({ username: 'admin', role: 'admin' }));
+    navigate('/admin/dashboard');
+  } else {
+    setError('Identifiants incorrects');
+  }
+};
+```
+
+À REMPLACER PAR:
+```javascript
+import { adminLogin } from '../../../services/api';
+
+const handleLogin = async (e) => {
+  e.preventDefault();
+  setError('');
+  
+  try {
+    // Appel API backend pour authentification
+    const response = await adminLogin(credentials);
+    
+    // Stocker le token JWT et les infos utilisateur
+    localStorage.setItem('admin_token', response.token);
+    localStorage.setItem('admin_user', JSON.stringify(response.user));
+    
+    // Redirection vers dashboard
+    navigate('/admin/dashboard');
+    
+  } catch (error) {
+    setError('Identifiants incorrects ou erreur serveur');
+    console.error('Erreur login:', error);
+  }
+};
+```
+
+📊 BACKEND SPRING BOOT À DÉVELOPPER
+====================================
+
+STRUCTURE RECOMMANDÉE:
+----------------------
+
+1. ENTITÉS (Models)
+-------------------
+src/main/java/com/energieplus/models/
+
+Formulaire.java
+```java
+@Entity
+@Table(name = "formulaires")
+public class Formulaire {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    private String nom;
+    private String prenom;
+    private String email;
+    private String telephone;
+    private String profil; // "Particulier" ou "Société"
+    private String region; // "Wallonie", "Bruxelles", "Flandre"
+    private String adresse;
+    private String codePostal;
+    private String ville;
+    
+    // Situation énergétique
+    private String typeLogement;
+    private Integer anneeConstruction;
+    private Integer surface;
+    private Integer consommationElectrique;
+    private Integer consommationGaz;
+    private String chauffageActuel;
+    
+    // Objectifs
+    private String[] objectifs;
+    
+    // Besoin énergétique
+    private String besoinEnergetique;
+    
+    // Statut
+    private String statut; // "En attente", "En cours", "Complété"
+    
+    @CreatedDate
+    private LocalDateTime dateCreation;
+    
+    // Getters, Setters, Constructeurs
+}
+```
+
+RendezVous.java
+```java
+@Entity
+@Table(name = "rendez_vous")
+public class RendezVous {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    private String client;
+    private LocalDate date;
+    private LocalTime heure;
+    private String type; // "Visite technique", "Appel", "Visio"
+    private String statut; // "Confirmé", "En attente", "Annulé"
+    
+    @ManyToOne
+    @JoinColumn(name = "formulaire_id")
+    private Formulaire formulaire;
+    
+    // Getters, Setters
+}
+```
+
+Admin.java
+```java
+@Entity
+@Table(name = "admins")
+public class Admin {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    private String username;
+    private String password; // Hashé avec BCrypt
+    private String role;
+    
+    // Getters, Setters
+}
+```
+
+2. REPOSITORIES
+---------------
+src/main/java/com/energieplus/repositories/
+
+FormulaireRepository.java
+```java
+@Repository
+public interface FormulaireRepository extends JpaRepository<Formulaire, Long> {
+    List<Formulaire> findByStatut(String statut);
+    List<Formulaire> findByRegion(String region);
+    List<Formulaire> findByNomContainingOrPrenomContaining(String nom, String prenom);
+}
+```
+
+RendezVousRepository.java
+```java
+@Repository
+public interface RendezVousRepository extends JpaRepository<RendezVous, Long> {
+    List<RendezVous> findByDate(LocalDate date);
+    List<RendezVous> findByStatut(String statut);
+}
+```
+
+AdminRepository.java
+```java
+@Repository
+public interface AdminRepository extends JpaRepository<Admin, Long> {
+    Optional<Admin> findByUsername(String username);
+}
+```
+
+3. SERVICES
+-----------
+src/main/java/com/energieplus/services/
+
+FormulaireService.java
+```java
+@Service
+public class FormulaireService {
+    @Autowired
+    private FormulaireRepository repository;
+    
+    public List<Formulaire> findAll() {
+        return repository.findAll();
+    }
+    
+    public Formulaire findById(Long id) {
+        return repository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Formulaire non trouvé"));
+    }
+    
+    public Formulaire create(Formulaire formulaire) {
+        formulaire.setStatut("En attente");
+        formulaire.setDateCreation(LocalDateTime.now());
+        return repository.save(formulaire);
+    }
+    
+    public Formulaire update(Long id, Formulaire formulaire) {
+        Formulaire existing = findById(id);
+        // Mettre à jour les champs
+        return repository.save(existing);
+    }
+    
+    public void delete(Long id) {
+        repository.deleteById(id);
+    }
+    
+    public List<Formulaire> search(String query, String statut, String region) {
+        // Logique de recherche avec filtres
+    }
+}
+```
+
+4. CONTROLLERS (API REST)
+--------------------------
+src/main/java/com/energieplus/controllers/
+
+FormulaireController.java
+```java
+@RestController
+@RequestMapping("/api/formulaires")
+@CrossOrigin(origins = "http://localhost:5173") // Frontend React
+public class FormulaireController {
+    
+    @Autowired
+    private FormulaireService service;
+    
+    @GetMapping
+    public ResponseEntity<List<Formulaire>> getAll() {
+        return ResponseEntity.ok(service.findAll());
+    }
+    
+    @GetMapping("/{id}")
+    public ResponseEntity<Formulaire> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(service.findById(id));
+    }
+    
+    @PostMapping
+    public ResponseEntity<Formulaire> create(@RequestBody Formulaire formulaire) {
+        Formulaire saved = service.create(formulaire);
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    }
+    
+    @PutMapping("/{id}")
+    public ResponseEntity<Formulaire> update(@PathVariable Long id, @RequestBody Formulaire formulaire) {
+        return ResponseEntity.ok(service.update(id, formulaire));
+    }
+    
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+    
+    @GetMapping("/search")
+    public ResponseEntity<List<Formulaire>> search(
+        @RequestParam(required = false) String query,
+        @RequestParam(required = false) String statut,
+        @RequestParam(required = false) String region
+    ) {
+        return ResponseEntity.ok(service.search(query, statut, region));
+    }
+}
+```
+
+AdminController.java
+```java
+@RestController
+@RequestMapping("/api/admin")
+@CrossOrigin(origins = "http://localhost:5173")
+public class AdminController {
+    
+    @Autowired
+    private AdminService adminService;
+    
+    @Autowired
+    private JwtTokenProvider tokenProvider;
+    
+    @PostMapping("/login")
+    public ResponseEntity<?> login(@RequestBody LoginRequest request) {
+        try {
+            Admin admin = adminService.authenticate(request.getUsername(), request.getPassword());
+            String token = tokenProvider.generateToken(admin);
+            
+            return ResponseEntity.ok(new LoginResponse(token, admin));
+        } catch (AuthenticationException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body("Identifiants incorrects");
+        }
+    }
+}
+```
+
+5. CONFIGURATION SPRING BOOT
+-----------------------------
+
+application.properties
+```properties
+# Port serveur
+server.port=8080
+
+# Base de données PostgreSQL
+spring.datasource.url=jdbc:postgresql://localhost:5432/energieplus_db
+spring.datasource.username=postgres
+spring.datasource.password=votre_password
+
+# JPA/Hibernate
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+
+# JWT
+jwt.secret=votre_secret_key_tres_longue_et_securisee
+jwt.expiration=86400000
+```
+
+pom.xml (dépendances Maven)
+```xml
+<dependencies>
+    <!-- Spring Boot Starter Web -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    
+    <!-- Spring Boot Starter Data JPA -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    
+    <!-- PostgreSQL Driver -->
+    <dependency>
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
+        <scope>runtime</scope>
+    </dependency>
+    
+    <!-- Spring Security + JWT -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>io.jsonwebtoken</groupId>
+        <artifactId>jjwt</artifactId>
+        <version>0.9.1</version>
+    </dependency>
+    
+    <!-- Lombok (optionnel) -->
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <optional>true</optional>
+    </dependency>
+</dependencies>
+```
+
+🔄 ÉTAPES D'INTÉGRATION COMPLÈTE
+=================================
+
+ÉTAPE 1: Développer le backend Spring Boot
+-------------------------------------------
+✓ Créer les entités (Formulaire, RendezVous, Admin)
+✓ Créer les repositories
+✓ Créer les services
+✓ Créer les controllers REST
+✓ Configurer la base de données
+✓ Implémenter JWT pour authentification
+✓ Tester avec Postman
+
+ÉTAPE 2: Connecter le frontend React au backend
+------------------------------------------------
+✓ Modifier src/services/api.js (remplacer les mocks)
+✓ Modifier AdminDashboard.jsx (appels API réels)
+✓ Modifier AdminLogin.jsx (authentification JWT)
+✓ Configurer CORS dans Spring Boot
+✓ Tester l'intégration
+
+ÉTAPE 3: Tester le flux complet
+--------------------------------
+✓ Visiteur remplit formulaire → enregistré en DB
+✓ Admin login → reçoit token JWT
+✓ Admin dashboard → affiche vraies données
+✓ Admin modifie/supprime → persiste en DB
+
+📊 EXEMPLE DE FLUX COMPLET
+===========================
+
+1. Visiteur remplit formulaire:
+   React → POST http://localhost:8080/api/formulaires
+   → Spring Boot → PostgreSQL
+
+2. Admin se connecte:
+   React → POST http://localhost:8080/api/admin/login
+   → Spring Boot vérifie → Retourne JWT token
+
+3. Admin consulte dashboard:
+   React → GET http://localhost:8080/api/formulaires (avec token)
+   → Spring Boot vérifie token → PostgreSQL → Retourne données
+   → React affiche dans le dashboard
+
+✅ APRÈS INTÉGRATION
+====================
+✓ Les formulaires visiteurs apparaîtront dans l'admin
+✓ Les modifications admin persisteront
+✓ L'authentification sera sécurisée (JWT)
+✓ Export Excel fonctionnera avec vraies données
+✓ Application complète et production-ready
+
+🎉 CONCLUSION
+=============
+Actuellement, c'est NORMAL que les données ne se synchronisent pas.
+Une fois le backend Spring Boot développé et connecté, TOUT fonctionnera ! 🚀
