@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { validateFormData, generateSimulation } from '../../utils/simulation';
+import { submitForm, createSimulation } from '../../services/api';
 import './Formulaire.css';
 
 const Formulaire = () => {
   const { productId } = useParams();
   const navigate = useNavigate();
+  const [submitting, setSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
     profil: '',
@@ -55,31 +57,52 @@ const Formulaire = () => {
     }
   };
 
-  const handleSubmit = () => {
-    // Déterminer le produit recommandé selon le besoin
-    let recommendedProductId = 1; // Par défaut: Panneaux Premium
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    let recommendedProductId = productId ? parseInt(productId) : 1;
     
-    if (formData.besoinEnergetique === 'panneaux') {
-      // Choisir entre Premium et Standard selon la consommation
-      recommendedProductId = formData.consommationActuelle > 4000 ? 1 : 2;
-    } else if (formData.besoinEnergetique === 'batterie') {
-      // Choisir entre 10kWh et 5kWh selon la consommation
-      recommendedProductId = formData.consommationActuelle > 4000 ? 3 : 4;
-    } else if (formData.besoinEnergetique === 'pompe') {
-      // Choisir entre Air-Eau et Air-Air selon le profil
-      recommendedProductId = formData.profil === 'societe' ? 5 : 6;
-    } else if (formData.besoinEnergetique === 'tout') {
-      // Solution complète: Panneaux Premium
-      recommendedProductId = 1;
+    if (!productId) {
+      if (formData.besoinEnergetique === 'panneaux') {
+        recommendedProductId = formData.consommationActuelle > 4000 ? 1 : 2;
+      } else if (formData.besoinEnergetique === 'batterie') {
+        recommendedProductId = formData.consommationActuelle > 4000 ? 3 : 4;
+      } else if (formData.besoinEnergetique === 'pompe') {
+        recommendedProductId = formData.profil === 'societe' ? 5 : 6;
+      } else {
+        recommendedProductId = 1;
+      }
     }
-    
-    // Générer la simulation avec le produit recommandé
-    const simulation = generateSimulation(formData, recommendedProductId);
-    
-    // Naviguer vers la page de simulation avec les données
-    navigate(`/simulation/${simulation.id}`, {
-      state: { simulation },
-    });
+
+    try {
+      // 1. Envoi au backend Spring Boot (Création Visiteur + Formulaire)
+      const formRes = await submitForm(formData);
+      
+      // 2. Création de la demande de simulation dans Spring Boot si possible
+      let backendSimulation = null;
+      if (formRes && formRes.id) {
+        try {
+          backendSimulation = await createSimulation(formRes.id, recommendedProductId);
+        } catch (simErr) {
+          console.warn('Création simulation API échouée, fallback local:', simErr);
+        }
+      }
+
+      // 3. Obtenir simulation locale fallback au cas où
+      const localSimulation = generateSimulation(formData, recommendedProductId);
+      const simulationId = backendSimulation?.id || formRes?.id || localSimulation.id;
+
+      navigate(`/simulation/${simulationId}`, {
+        state: { simulation: backendSimulation || localSimulation },
+      });
+    } catch (error) {
+      console.error('Erreur lors de la soumission du formulaire:', error);
+      const localSimulation = generateSimulation(formData, recommendedProductId);
+      navigate(`/simulation/${localSimulation.id}`, {
+        state: { simulation: localSimulation },
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

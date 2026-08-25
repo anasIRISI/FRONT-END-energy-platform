@@ -1,4 +1,5 @@
-# 📋 Résumé du Projet - EnergiePlus
+# � GUIDE COMPLET DU PROJET ENERGIEPLUS
+## Pour Débutants React - Explication Technique Complète
 
 ## 🎯 Vue d'ensemble
 

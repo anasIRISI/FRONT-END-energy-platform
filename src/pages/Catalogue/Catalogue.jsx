@@ -1,13 +1,36 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { products, productCategories, getProductsByType } from '../../data/products';
+import { productCategories, getProductsByType } from '../../data/products';
+import { getProducts } from '../../services/api';
 import './Catalogue.css';
 
 const Catalogue = () => {
   const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [productList, setProductList] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredProducts = getProductsByType(selectedCategory);
+  useEffect(() => {
+    let isMounted = true;
+    setLoading(true);
+    getProducts(selectedCategory)
+      .then((data) => {
+        if (isMounted) {
+          setProductList(data);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.error('Erreur chargement produits API:', err);
+        if (isMounted) {
+          setProductList(getProductsByType(selectedCategory));
+          setLoading(false);
+        }
+      });
+    return () => { isMounted = false; };
+  }, [selectedCategory]);
+
+  const filteredProducts = productList;
 
   return (
     <div className="catalogue">

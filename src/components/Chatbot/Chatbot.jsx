@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { sendChatMessage } from '../../services/api';
 import './Chatbot.css';
 
 const Chatbot = ({ isOpen, onClose }) => {
@@ -13,6 +14,7 @@ const Chatbot = ({ isOpen, onClose }) => {
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [conversationId, setConversationId] = useState(null);
   const messagesEndRef = useRef(null);
   const navigate = useNavigate();
 
@@ -45,8 +47,25 @@ const Chatbot = ({ isOpen, onClose }) => {
     setInputValue('');
     setIsTyping(true);
 
-    // Simuler une réponse du bot
-    setTimeout(() => {
+    try {
+      // 1. Tenter l'envoi au service API Chatbot Backend
+      const response = await sendChatMessage(text, conversationId, 1);
+      if (response && response.conversationId) {
+        setConversationId(response.conversationId);
+      }
+      const responseText = response?.contenu || generateBotResponse(text);
+      
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          text: responseText,
+          sender: 'bot',
+          timestamp: new Date(),
+        },
+      ]);
+    } catch (err) {
+      console.warn('Fallback bot local pour chatbot:', err.message);
       const botResponse = generateBotResponse(text);
       setMessages((prev) => [
         ...prev,
@@ -57,8 +76,9 @@ const Chatbot = ({ isOpen, onClose }) => {
           timestamp: new Date(),
         },
       ]);
+    } finally {
       setIsTyping(false);
-    }, 1000);
+    }
   };
 
   const generateBotResponse = (userMessage) => {

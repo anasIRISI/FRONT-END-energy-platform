@@ -1,12 +1,43 @@
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getProductById } from '../../data/products';
+import { getProductById as getMockProductById } from '../../data/products';
+import { getProductById } from '../../services/api';
 import './ProductDetail.css';
 
 const ProductDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [product, setProduct] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const product = getProductById(id);
+  useEffect(() => {
+    let isMounted = true;
+    setLoading(true);
+    getProductById(id)
+      .then((data) => {
+        if (isMounted) {
+          setProduct(data);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setProduct(getMockProductById(id));
+          setLoading(false);
+        }
+      });
+    return () => { isMounted = false; };
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="product-detail">
+        <div className="container">
+          <p>Chargement des détails du produit...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!product) {
     return (

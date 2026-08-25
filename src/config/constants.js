@@ -10,15 +10,25 @@ export const CONTACT = {
   address: 'Avenue de l\'Énergie 1, 1000 Bruxelles',
 };
 
-// API Configuration (à adapter selon votre backend)
-export const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+// API Configuration (Spring Boot Backend)
+export const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) || '/api';
 
 export const API_ENDPOINTS = {
-  products: '/products',
+  products: '/produits',
+  regions: '/regions',
+  visiteurs: '/visiteurs',
+  forms: '/formulaires',
   simulations: '/simulations',
-  appointments: '/appointments',
-  forms: '/forms',
-  chatbot: '/chatbot',
+  appointments: '/rendez-vous',
+  chatbot: '/chatbot/messages',
+  admin: {
+    login: '/admin/auth/login',
+    statistiques: '/admin/statistiques',
+    formulaires: '/admin/formulaires',
+    rendezVous: '/admin/rendez-vous',
+    produits: '/admin/produits',
+    exportCsv: '/admin/formulaires/export',
+  },
 };
 
 // Formulaire
