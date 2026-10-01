@@ -16,6 +16,7 @@ const RendezVous = () => {
   });
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [submissionError, setSubmissionError] = useState('');
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -23,31 +24,28 @@ const RendezVous = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmissionError('');
     setLoading(true);
     try {
-      // 1. Créer le visiteur si besoin
-      let visiteurId = 1;
-      try {
-        const v = await createVisiteur({
-          profil: 'PARTICULIER',
-          email: formData.email,
-          regionId: 1,
-        });
-        if (v && v.id) visiteurId = v.id;
-      } catch (e) {
-        console.warn('Création visiteur avant RDV échouée, fallback visiteurId=1:', e.message);
-      }
+      // Le rendez-vous est toujours associé au visiteur qui recevra l'e-mail.
+      const v = await createVisiteur({
+        profil: 'PARTICULIER',
+        email: formData.email,
+        regionId: 1,
+      });
+      if (!v?.id) throw new Error('Le profil visiteur n’a pas pu être créé.');
+      localStorage.setItem('energieplus_visiteur_id', String(v.id));
 
       // 2. Créer le rendez-vous dans Spring Boot
       await createAppointment({
-        visiteurId,
+        visiteurId: v.id,
         date: formData.date,
         heure: formData.heure,
       });
       setSubmitted(true);
     } catch (err) {
-      console.warn('Erreur API rendez-vous backend, confirmation locale:', err.message);
-      setSubmitted(true);
+      console.error('Erreur lors de l’enregistrement du rendez-vous:', err);
+      setSubmissionError(err.response?.data?.message || 'Votre demande n’a pas pu être enregistrée. Vérifiez votre connexion puis réessayez.');
     } finally {
       setLoading(false);
     }
@@ -67,9 +65,9 @@ const RendezVous = () => {
       <div className="rendez-vous">
         <div className="container">
           <div className="success-card card">
-            <div className="success-icon">✅</div>
-            <h1>Rendez-vous confirmé !</h1>
-            <p>Nous avons bien reçu votre demande de rendez-vous.</p>
+            <div className="success-icon">🕓</div>
+            <h1>Demande de rendez-vous enregistrée</h1>
+            <p>Votre demande est en attente de confirmation par notre équipe.</p>
             <div className="rdv-summary">
               <div className="summary-item">
                 <span className="summary-label">Date</span>
@@ -87,7 +85,7 @@ const RendezVous = () => {
               </div>
             </div>
             <p className="confirmation-message">
-              Un email de confirmation a été envoyé à <strong>{formData.email}</strong>
+              Un e-mail de confirmation sera envoyé à <strong>{formData.email}</strong> dès que le rendez-vous sera validé.
             </p>
             <div className="success-actions">
               <button className="btn btn-primary" onClick={() => navigate('/')}>
@@ -214,10 +212,12 @@ const RendezVous = () => {
             <button
               type="submit"
               className="btn btn-primary"
+              aria-busy={loading}
               disabled={!formData.nom || !formData.email || !formData.telephone || !formData.date || !formData.heure}
             >
-              Confirmer le rendez-vous
+              {loading ? 'Enregistrement…' : 'Envoyer la demande'}
             </button>
+            {submissionError && <p className="form-error" role="alert">{submissionError}</p>}
           </form>
 
           <div className="rdv-sidebar">
@@ -263,7 +263,7 @@ const RendezVous = () => {
               <div className="contact-info">
                 <div className="contact-item">
                   <span className="contact-icon">📧</span>
-                  <span>info@energieplus.be</span>
+                  <span>info@ecoreno.be</span>
                 </div>
                 <div className="contact-item">
                   <span className="contact-icon">📞</span>

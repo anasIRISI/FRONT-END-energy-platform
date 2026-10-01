@@ -3,8 +3,34 @@
 }
 
 .hero-section {
-  padding: 80px 0;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e8f4f8 100%);
+  position: relative;
+  overflow: hidden;
+  padding: 112px 0 88px;
+  background: radial-gradient(circle at 86% 20%, rgba(52, 168, 83, 0.16), transparent 26%), linear-gradient(135deg, #f8fbff 0%, #e8f4f8 100%);
+}
+
+.hero-section::before,
+.hero-section::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.hero-section::before {
+  width: 360px;
+  height: 360px;
+  right: -140px;
+  bottom: -180px;
+  border: 56px solid rgba(26, 115, 232, 0.07);
+}
+
+.hero-section::after {
+  width: 160px;
+  height: 160px;
+  left: 44%;
+  top: 60px;
+  background: rgba(251, 188, 4, 0.09);
 }
 
 .hero-section .container {
@@ -14,8 +40,15 @@
   align-items: center;
 }
 
+.hero-content,
+.hero-visual {
+  position: relative;
+  z-index: 1;
+}
+
 .hero-content h1 {
-  font-size: 3.5rem;
+  font-size: clamp(2.7rem, 5vw, 4.35rem);
+  line-height: 1.08;
   margin-bottom: 24px;
   background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
   -webkit-background-clip: text;
@@ -24,7 +57,8 @@
 }
 
 .hero-content p {
-  font-size: 1.25rem;
+  max-width: 620px;
+  font-size: 1.125rem;
   margin-bottom: 32px;
   line-height: 1.8;
 }
@@ -41,12 +75,15 @@
 }
 
 .hero-card {
-  background: white;
-  border-radius: 24px;
-  padding: 48px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+  position: relative;
+  min-width: 280px;
+  background: linear-gradient(145deg, #ffffff, #f4faff);
+  border: 1px solid rgba(26, 115, 232, 0.14);
+  border-radius: 28px;
+  padding: 52px 48px;
+  box-shadow: 0 24px 60px rgba(26, 115, 232, 0.16);
   text-align: center;
-  transform: rotate(3deg);
+  transform: rotate(2.5deg);
   transition: var(--transition);
 }
 
@@ -55,12 +92,18 @@
 }
 
 .energy-icon {
-  font-size: 4rem;
-  margin-bottom: 16px;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 28px;
+  font-size: 3.4rem;
+  background: linear-gradient(135deg, rgba(26, 115, 232, 0.13), rgba(52, 168, 83, 0.15));
 }
 
 .regions-section {
-  padding: 80px 0;
+  padding: 96px 0;
 }
 
 .regions-section h2 {
@@ -77,7 +120,8 @@
 .region-card {
   background: white;
   padding: 32px;
-  border-radius: 16px;
+  border: 1px solid rgba(218, 220, 224, 0.82);
+  border-radius: 20px;
   box-shadow: var(--shadow);
   text-align: center;
   transition: var(--transition);
@@ -106,11 +150,12 @@
   border-radius: 50%;
   background: var(--region-color);
   margin: 0 auto 16px;
-  opacity: 0.1;
+  opacity: 0.14;
+  box-shadow: inset 0 0 0 12px rgba(255, 255, 255, 0.68);
 }
 
 .products-section {
-  padding: 80px 0;
+  padding: 96px 0;
   background: var(--bg-secondary);
 }
 
@@ -130,9 +175,19 @@
   cursor: pointer;
 }
 
+.product-card.card {
+  padding: 32px;
+}
+
 .product-icon {
-  font-size: 4rem;
-  margin-bottom: 16px;
+  width: 88px;
+  height: 88px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 20px;
+  border-radius: 24px;
+  font-size: 3.25rem;
+  background: linear-gradient(135deg, rgba(26, 115, 232, 0.09), rgba(52, 168, 83, 0.12));
 }
 
 .product-card h3 {
@@ -146,7 +201,7 @@
 }
 
 .features-section {
-  padding: 80px 0;
+  padding: 96px 0;
 }
 
 .features-section h2 {
@@ -163,6 +218,14 @@
 .feature-card {
   text-align: center;
   padding: 32px;
+  border-radius: 20px;
+  transition: var(--transition);
+}
+
+.feature-card:hover {
+  background: white;
+  box-shadow: var(--shadow-soft);
+  transform: translateY(-4px);
 }
 
 .feature-icon {
@@ -172,12 +235,20 @@
   justify-content: center;
 }
 
+.feature-icon svg {
+  padding: 12px;
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  background: var(--primary-soft);
+}
+
 .feature-card h3 {
   margin-bottom: 12px;
 }
 
 .cta-section {
-  padding: 80px 0;
+  padding: 96px 0;
   background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
   color: white;
 }
@@ -203,13 +274,18 @@
 }
 
 .cta-content .btn:hover {
-  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(32, 33, 36, 0.2);
+  transform: translateY(-3px);
 }
 
 @media (max-width: 768px) {
   .hero-section .container {
     grid-template-columns: 1fr;
     gap: 32px;
+  }
+
+  .hero-section {
+    padding: 88px 0 64px;
   }
 
   .hero-content h1 {

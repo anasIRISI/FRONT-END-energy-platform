@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { API_BASE_URL, API_ENDPOINTS } from '../config/constants';
+import { API_BASE_URL, API_ENDPOINTS, CHATBOT_SERVICE_URL, STORAGE_KEYS } from '../config/constants';
 import { products as mockProducts, getProductById as getMockProductById } from '../data/products';
 
 // Configuration d'Axios
@@ -72,6 +72,31 @@ const formatProduct = (backendProduct) => {
 };
 
 // ==================== PRODUITS ====================
+
+// Lecture stricte du catalogue backend. Contrairement à getProducts, cette
+// fonction ne bascule pas sur les mocks : une simulation doit toujours
+// référencer un produit réellement disponible côté Spring Boot.
+export const getBackendProducts = async () => {
+  const response = await api.get(API_ENDPOINTS.products);
+  if (!Array.isArray(response.data)) {
+    throw new Error('Le catalogue backend est invalide ou indisponible.');
+  }
+  return response.data.map(formatProduct);
+};
+
+export const findCompatibleBackendProduct = (products, energyNeed) => {
+  const predicates = {
+    panneaux: (type) => type.includes('panneau'),
+    batterie: (type) => type.includes('batterie'),
+    pompe: (type) => type.includes('pompe') && type.includes('chaleur'),
+    isolation: (type) => type.includes('isolation'),
+  };
+
+  const predicate = predicates[energyNeed];
+  if (!predicate) return null;
+
+  return products.find((product) => predicate(String(product.type || '').toLocaleLowerCase('fr-BE'))) || null;
+};
 
 export const getProducts = async (type) => {
   try {
@@ -154,43 +179,121 @@ export const submitFormulaire = async (formulaireId) => {
   }
 };
 
-// Legacy submitForm helper (combines visitor creation + form creation + submission)
+// Création atomique du parcours formulaire : aucun résultat local n'est créé
+// si une étape backend échoue.
 export const submitForm = async (formData) => {
-  try {
-    // 1. Créer le visiteur
-    const visiteur = await createVisiteur({
-      profil: (formData.profil || 'particulier').toUpperCase(),
-      email: formData.email || 'visiteur@example.com',
-      regionId: formData.regionId || 1,
-      adresseDomicile: `${formData.adresse || ''} ${formData.codePostal || ''} ${formData.ville || ''}`.trim(),
-      typeLogement: formData.typeLogement || 'Maison individuelle',
-      raisonSociale: formData.raisonSociale || null,
-      numeroTVA: formData.tva || null,
-      secteurActivite: formData.secteurActivite || null,
-    });
+  const surface = String(formData.surfaceHabitable ?? '').trim();
+  const consommation = String(formData.consommationActuelle ?? '').trim();
+  const valuesAreValid = (value) => /^\d+(?:[.,]\d+)?$/.test(value) && Number(value.replace(',', '.')) > 0;
 
-    // 2. Créer le formulaire
-    const formulaire = await createFormulaire(visiteur.id, [formData.regionId || 1]);
-
-    // 3. Renseigner les réponses
-    const reponses = {
-      surface: String(formData.surface || ''),
-      consommation: String(formData.consommation || ''),
-      orientation: String(formData.orientation || ''),
-      objectifs: Array.isArray(formData.objectifs) ? formData.objectifs.join(',') : String(formData.objectifs || ''),
-    };
-    await updateFormulaireEtape(formulaire.id, 5, reponses);
-
-    // 4. Finaliser
-    const submittedForm = await submitFormulaire(formulaire.id);
-    return submittedForm;
-  } catch (error) {
-    console.warn('Appel backend échoué dans submitForm, renvoi simulation simulée locale:', error.message);
-    return { id: Date.now(), ...formData };
+  if (!valuesAreValid(surface) || !valuesAreValid(consommation)) {
+    const error = new Error('La surface et la consommation doivent être des nombres strictement positifs.');
+    error.code = 'INVALID_SIMULATION_INPUT';
+    throw error;
   }
+
+  const regionIdsByName = { Wallonie: 1, Bruxelles: 2, Flandre: 3 };
+  const regionId = formData.regionId || regionIdsByName[formData.region] || 1;
+  const hasCompletePrimeProfile = formData.demanderEstimationPrime && (
+    formData.region === 'Flandre'
+      ? valuesAreValid(String(formData.coutTravauxTtc ?? '').trim())
+        && valuesAreValid(String(formData.coutTravauxHtva ?? '').trim())
+        && ['f3', 'f4'].includes(String(formData.categorieRevenusFlandre || '').toLowerCase())
+      : formData.region === 'Wallonie'
+        && Boolean(String(formData.anneeConstruction || '').trim())
+        && valuesAreValid(String(formData.surfaceTravauxM2 ?? '').trim())
+        && valuesAreValid(String(formData.coutTravauxTtc ?? '').trim())
+        && !['', 'inconnu'].includes(String(formData.statutDemandeur || '').toLowerCase())
+        && !['', 'inconnu'].includes(String(formData.categorieRevenus || '').toLowerCase())
+        && Boolean(formData.entrepreneurEnregistre)
+  );
+
+  // 1. Créer le visiteur
+  const visiteur = await createVisiteur({
+    profil: (formData.profil || 'particulier').toUpperCase(),
+    email: formData.email,
+    regionId,
+    adresseDomicile: `${formData.adresse || ''} ${formData.codePostal || ''} ${formData.ville || ''}`.trim(),
+    typeLogement: formData.typeLogement || 'Maison individuelle',
+    raisonSociale: formData.raisonSociale || null,
+    numeroTVA: formData.numeroTVA || null,
+    secteurActivite: formData.secteurActivite || null,
+  });
+  localStorage.setItem('energieplus_visiteur_id', String(visiteur.id));
+
+  // 2. Créer le formulaire
+  const formulaire = await createFormulaire(visiteur.id, [regionId]);
+  localStorage.setItem('energieplus_formulaire_id', String(formulaire.id));
+
+  // 3. Renseigner les réponses avec les clés strictement attendues par le backend.
+  await updateFormulaireEtape(formulaire.id, 5, {
+    surface,
+    consommation,
+    typeLogement: String(formData.typeLogement || ''),
+    orientation: String(formData.orientation || ''),
+    objectifs: Array.isArray(formData.objectifs) ? formData.objectifs.join(',') : String(formData.objectifs || ''),
+    chauffage: String(formData.chauffage || ''),
+    tarifMode: String(formData.tarifMode || ''),
+    tarifKwh: String(formData.tarifKwh || ''),
+    niveauIsolation: String(formData.niveauIsolation || ''),
+    anneeBatiment: String(formData.anneeBatiment || ''),
+    scorePebOfficiel: String(formData.scorePebOfficiel || ''),
+    // Une simulation continue sans prime si les informations de prime restent incomplètes.
+    demanderEstimationPrime: String(Boolean(hasCompletePrimeProfile)),
+    anneeConstruction: String(formData.anneeConstruction || ''),
+    surfaceTravauxM2: String(formData.surfaceTravauxM2 || ''),
+    coutTravauxTtc: String(formData.coutTravauxTtc || ''),
+    coutTravauxHtva: String(formData.coutTravauxHtva || ''),
+    statutDemandeur: String(formData.statutDemandeur || ''),
+    categorieRevenus: String(formData.categorieRevenus || ''),
+    categorieRevenusFlandre: String(formData.categorieRevenusFlandre || ''),
+    entrepreneurEnregistre: String(formData.entrepreneurEnregistre || ''),
+    isolantBiosource: String(formData.isolantBiosource || 'non'),
+  });
+
+  // 4. Finaliser le formulaire avant toute création de simulation.
+  return submitFormulaire(formulaire.id);
 };
 
 // ==================== SIMULATIONS ====================
+
+const readSimulationHistory = () => {
+  try {
+    const history = JSON.parse(localStorage.getItem(STORAGE_KEYS.simulationHistory) || '[]');
+    return Array.isArray(history) ? history : [];
+  } catch {
+    return [];
+  }
+};
+
+export const getLatestSimulationForProduct = (productId) => {
+  const normalizedProductId = Number(productId);
+  if (!Number.isInteger(normalizedProductId) || normalizedProductId <= 0) return null;
+
+  return readSimulationHistory()
+    .filter((simulation) => Number(simulation.produit?.id || simulation.produitId) === normalizedProductId)
+    .sort((first, second) => new Date(second.dateCalcul || 0) - new Date(first.dateCalcul || 0))[0] || null;
+};
+
+export const getLatestSimulation = () => readSimulationHistory()
+  .sort((first, second) => new Date(second.dateCalcul || 0) - new Date(first.dateCalcul || 0))[0] || null;
+
+export const rememberSimulation = (simulation) => {
+  const simulationId = Number(simulation?.id);
+  const productId = Number(simulation?.produit?.id || simulation?.produitId);
+  if (!Number.isInteger(simulationId) || !Number.isInteger(productId) || productId <= 0) return;
+
+  const historyWithoutCurrent = readSimulationHistory().filter((item) => Number(item.id) !== simulationId);
+  const updatedHistory = [{
+    ...simulation,
+    produitId: productId,
+    dateCalcul: simulation.dateCalcul || new Date().toISOString(),
+  }, ...historyWithoutCurrent]
+    .sort((first, second) => new Date(second.dateCalcul || 0) - new Date(first.dateCalcul || 0))
+    .slice(0, 20);
+
+  localStorage.setItem(STORAGE_KEYS.simulationHistory, JSON.stringify(updatedHistory));
+};
 
 export const createSimulation = async (formulaireId, produitId) => {
   try {
@@ -202,14 +305,9 @@ export const createSimulation = async (formulaireId, produitId) => {
   }
 };
 
-export const getSimulationById = async (id) => {
-  try {
-    const response = await api.get(`${API_ENDPOINTS.simulations}/${id}`);
-    return response.data;
-  } catch (error) {
-    console.warn(`Backend non disponible pour getSimulationById(${id}):`, error.message);
-    return null;
-  }
+export const getSimulationByReference = async (reference) => {
+  const response = await api.get(`${API_ENDPOINTS.simulations}/reference/${encodeURIComponent(reference)}`);
+  return response.data;
 };
 
 // ==================== RENDEZ-VOUS ====================
@@ -231,12 +329,29 @@ export const createAppointment = async (appointmentData) => {
 
 // ==================== CHATBOT ====================
 
-export const sendChatMessage = async (messageText, conversationId = null, visiteurId = 1) => {
+export const getChatbotIdentity = () => {
+  const visiteurId = Number(localStorage.getItem('energieplus_visiteur_id'));
+  const formulaireId = Number(localStorage.getItem('energieplus_formulaire_id'));
+  return {
+    visiteurId: Number.isInteger(visiteurId) && visiteurId > 0 ? visiteurId : null,
+    formulaireId: Number.isInteger(formulaireId) && formulaireId > 0 ? formulaireId : null,
+  };
+};
+
+// Les créneaux viennent exclusivement du backend : aucun créneau déjà
+// planifié ou confirmé n'est proposé au visiteur.
+export const getAvailableAppointmentSlots = async (date) => {
+  const response = await api.get(`${API_ENDPOINTS.appointments}/creneaux-disponibles`, { params: { date } });
+  return Array.isArray(response.data) ? response.data : [];
+};
+
+export const sendChatMessage = async (messageText, conversationId = null, visiteurId = null, workflow = {}) => {
   try {
-    const response = await api.post(API_ENDPOINTS.chatbot, {
-      visiteurId,
+    const response = await axios.post(`${CHATBOT_SERVICE_URL}/chat`, {
+      ...(visiteurId ? { visiteurId } : {}),
       conversationId,
       message: messageText,
+      ...workflow,
     });
     return response.data;
   } catch (error) {
@@ -262,7 +377,10 @@ export const adminLogin = async (login, motDePasse) => {
 
 export const getAdminStatistiques = async () => {
   try {
-    const response = await api.get(API_ENDPOINTS.admin.statistiques);
+    const response = await api.get(API_ENDPOINTS.admin.statistiques, {
+      params: { refresh: Date.now() },
+      headers: { 'Cache-Control': 'no-cache' },
+    });
     return response.data;
   } catch (error) {
     console.error('Erreur récupération statistiques admin:', error);
@@ -272,7 +390,10 @@ export const getAdminStatistiques = async () => {
 
 export const getAdminFormulaires = async () => {
   try {
-    const response = await api.get(API_ENDPOINTS.admin.formulaires);
+    const response = await api.get(API_ENDPOINTS.admin.formulaires, {
+      params: { refresh: Date.now() },
+      headers: { 'Cache-Control': 'no-cache' },
+    });
     return response.data;
   } catch (error) {
     console.error('Erreur récupération formulaires admin:', error);
@@ -282,7 +403,10 @@ export const getAdminFormulaires = async () => {
 
 export const getAdminRendezVous = async () => {
   try {
-    const response = await api.get(API_ENDPOINTS.admin.rendezVous);
+    const response = await api.get(API_ENDPOINTS.admin.rendezVous, {
+      params: { refresh: Date.now() },
+      headers: { 'Cache-Control': 'no-cache' },
+    });
     return response.data;
   } catch (error) {
     console.error('Erreur récupération rendez-vous admin:', error);

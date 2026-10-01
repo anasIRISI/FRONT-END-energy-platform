@@ -3,7 +3,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: radial-gradient(circle at 85% 15%, rgba(251, 188, 4, 0.22), transparent 24%), linear-gradient(135deg, #1557b0 0%, #1a73e8 45%, #278e4a 100%);
   padding: 24px;
 }
 
@@ -11,6 +11,8 @@
   max-width: 450px;
   width: 100%;
   padding: 48px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  box-shadow: 0 24px 60px rgba(10, 42, 91, 0.26);
 }
 
 .login-header {

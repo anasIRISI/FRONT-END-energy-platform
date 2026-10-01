@@ -104,6 +104,118 @@
   margin: 0;
 }
 
+.admin-last-updated {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.admin-load-error {
+  margin-top: 8px;
+  color: #b54708;
+  font-weight: 600;
+}
+
+.appointments-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.appointments-heading h2 {
+  margin: 0;
+}
+
+.appointment-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.appointment-filter {
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: white;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.appointment-filter.active {
+  border-color: var(--primary-color);
+  background: var(--primary-color);
+  color: white;
+}
+
+.admin-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.admin-product-modal {
+  width: min(500px, 100%);
+  padding: 32px;
+}
+
+.admin-product-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.admin-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.product-table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 82px;
+}
+
+.product-action-button {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: var(--transition);
+}
+
+.product-action-button:hover {
+  transform: translateY(-1px);
+}
+
+.product-action-button--edit:hover {
+  border-color: var(--primary-color);
+  background: rgba(26, 115, 232, 0.08);
+}
+
+.product-action-button--delete:hover {
+  border-color: #d92d20;
+  background: #fff1f0;
+}
+
 /* Stats Grid */
 .stats-grid {
   display: grid;

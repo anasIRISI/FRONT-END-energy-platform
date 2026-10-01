@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getProductById as getMockProductById } from '../../data/products';
-import { getProductById } from '../../services/api';
+import { getProducts } from '../../services/api';
+import { productSlug } from '../../utils/routes';
 import './ProductDetail.css';
 
 const ProductDetail = () => {
-  const { id } = useParams();
+  const { slug } = useParams();
   const navigate = useNavigate();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -13,8 +13,9 @@ const ProductDetail = () => {
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
-    getProductById(id)
-      .then((data) => {
+    getProducts()
+      .then((products) => {
+        const data = products.find((item) => productSlug(item) === slug) || null;
         if (isMounted) {
           setProduct(data);
           setLoading(false);
@@ -22,12 +23,12 @@ const ProductDetail = () => {
       })
       .catch(() => {
         if (isMounted) {
-          setProduct(getMockProductById(id));
+          setProduct(null);
           setLoading(false);
         }
       });
     return () => { isMounted = false; };
-  }, [id]);
+  }, [slug]);
 
   if (loading) {
     return (
@@ -67,16 +68,11 @@ const ProductDetail = () => {
           <div className="product-hero-content">
             <h1>{product.name}</h1>
             <p className="product-intro">{product.fullDescription}</p>
-            <div className="product-price-section">
-              <div className="price-info">
-                <span className="price-label">À partir de</span>
-                <span className="price-amount">{product.price.toLocaleString('fr-BE')} €</span>
-                <span className="price-note">TVA et installation incluses</span>
-              </div>
+            <div className="product-cta-section">
               <div className="product-actions">
                 <button
                   className="btn btn-primary"
-                  onClick={() => navigate(`/formulaire/${product.id}`)}
+                  onClick={() => navigate(`/formulaire/${productSlug(product)}`)}
                 >
                   Obtenir ma simulation
                 </button>
@@ -165,7 +161,7 @@ const ProductDetail = () => {
               <p>Obtenez votre simulation personnalisée en moins de 5 minutes</p>
               <button
                 className="btn btn-primary"
-                onClick={() => navigate(`/formulaire/${product.id}`)}
+                onClick={() => navigate(`/formulaire/${productSlug(product)}`)}
               >
                 Lancer ma simulation
               </button>
@@ -174,12 +170,14 @@ const ProductDetail = () => {
             <div className="help-card card">
               <h3>Besoin de conseils ?</h3>
               <p>Notre assistant IA est disponible pour répondre à toutes vos questions</p>
-              <button className="btn btn-secondary">Parler à l'assistant</button>
+              <button className="btn btn-secondary" onClick={() => window.dispatchEvent(new Event('energieplus:open-luna'))}>
+                Parler à l'assistant
+              </button>
             </div>
 
             <div className="info-card card">
-              <h3>Primes disponibles</h3>
-              <p>En fonction de votre région, vous pouvez bénéficier de:</p>
+              <h3>Aides régionales</h3>
+              <p>Selon votre région et votre dossier, vous pourrez vérifier :</p>
               <ul className="primes-list">
                 <li>
                   <span className="prime-icon">🏛️</span>
@@ -187,11 +185,11 @@ const ProductDetail = () => {
                 </li>
                 <li>
                   <span className="prime-icon">🇧🇪</span>
-                  <span>Aides fédérales</span>
+                  <span>Conditions d’éligibilité</span>
                 </li>
                 <li>
                   <span className="prime-icon">💶</span>
-                  <span>TVA réduite</span>
+                  <span>Portail officiel régional</span>
                 </li>
               </ul>
             </div>

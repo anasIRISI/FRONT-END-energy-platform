@@ -1,5 +1,5 @@
 .catalogue-hero {
-  padding: 60px 0;
+  padding: 92px 0 72px;
   background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
   color: white;
   text-align: center;
@@ -16,7 +16,7 @@
 }
 
 .catalogue-content {
-  padding: 60px 0;
+  padding: 72px 0 88px;
 }
 
 .categories-filter {
@@ -30,8 +30,8 @@
 .category-btn {
   padding: 12px 24px;
   background: white;
-  border: 2px solid var(--border-color);
-  border-radius: 24px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -44,6 +44,7 @@
 }
 
 .category-btn:hover {
+  background: var(--primary-soft);
   border-color: var(--primary-color);
   color: var(--primary-color);
 }
@@ -63,6 +64,11 @@
 .product-item {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(218, 220, 224, 0.82);
+  border-radius: 20px;
+  background: white;
+  box-shadow: var(--shadow);
   transition: var(--transition);
 }
 
@@ -73,8 +79,8 @@
 .product-header {
   position: relative;
   padding: 32px;
-  background: linear-gradient(135deg, #f8f9fa, #e8f4f8);
-  border-radius: 16px 16px 0 0;
+  background: linear-gradient(135deg, #f7fbff, #e8f5f1);
+  border-radius: 0;
   text-align: center;
 }
 
@@ -90,7 +96,7 @@
   background: var(--secondary-color);
   color: white;
   padding: 6px 12px;
-  border-radius: 12px;
+  border-radius: 999px;
   font-size: 0.875rem;
   font-weight: 600;
 }
@@ -128,23 +134,6 @@
 .product-footer {
   padding: 24px;
   border-top: 1px solid var(--border-color);
-}
-
-.product-price {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 16px;
-}
-
-.price-label {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-}
-
-.price-value {
-  font-size: 1.75rem;
-  font-weight: 600;
-  color: var(--primary-color);
 }
 
 .product-actions {

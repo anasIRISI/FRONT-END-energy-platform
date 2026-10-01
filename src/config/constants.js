@@ -1,17 +1,19 @@
 // Configuration de l'application
 
-export const APP_NAME = 'EnergiePlus';
+export const APP_NAME = 'EcoReno+';
 export const APP_VERSION = '1.0.0';
 
 // Contacts
 export const CONTACT = {
-  email: 'info@energieplus.be',
+  email: 'info@ecoreno.be',
   phone: '+32 2 123 45 67',
   address: 'Avenue de l\'Énergie 1, 1000 Bruxelles',
 };
 
 // API Configuration (Spring Boot Backend)
 export const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) || '/api';
+// Le service chatbot FastAPI écoute sur 8081 en développement local.
+export const CHATBOT_SERVICE_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_CHATBOT_API_URL) || 'http://localhost:8081';
 
 export const API_ENDPOINTS = {
   products: '/produits',
@@ -119,6 +121,7 @@ export const ANIMATION_DURATION = 300; // ms
 export const STORAGE_KEYS = {
   formData: 'energieplus_form_data',
   simulation: 'energieplus_simulation',
+  simulationHistory: 'energieplus_simulation_history',
   preferences: 'energieplus_preferences',
 };
 

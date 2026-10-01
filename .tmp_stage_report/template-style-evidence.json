@@ -1,0 +1,74 @@
+{
+  "input": "C:\\Users\\hp\\Downloads\\E\u0301TAT D\u2019AVANCEMENT  STAGE- 4 INFO  .docx",
+  "fonts_by_char_count": {
+    "Times New Roman": 91,
+    "Candara": 30
+  },
+  "direct_run_formatting_runs": 9,
+  "direct_paragraph_formatting_paragraphs": 0,
+  "heading_like_paragraphs_not_heading_style": [
+    {
+      "para_index": 8,
+      "text": "\u00c9TAT D\u2019AVANCEMENT",
+      "style": "Normal"
+    },
+    {
+      "para_index": 14,
+      "text": "Nom et pr\u00e9nom",
+      "style": "Normal"
+    },
+    {
+      "para_index": 16,
+      "text": "Sujet du stage",
+      "style": "Normal"
+    },
+    {
+      "para_index": 18,
+      "text": "R\u00e9alisations principales",
+      "style": "Normal"
+    },
+    {
+      "para_index": 20,
+      "text": "Difficult\u00e9s rencontr\u00e9es",
+      "style": "Normal"
+    },
+    {
+      "para_index": 22,
+      "text": "Prochaines \u00e9tapes",
+      "style": "Normal"
+    }
+  ],
+  "examples": {
+    "direct_run_formatting": [
+      {
+        "para_index": 8,
+        "run_text": "\u00c9TAT D\u2019AVANCEMENT",
+        "style": "Normal"
+      },
+      {
+        "para_index": 9,
+        "run_text": "STAGE- ",
+        "style": "Normal"
+      },
+      {
+        "para_index": 9,
+        "run_text": "4",
+        "style": "Normal"
+      },
+      {
+        "para_index": 9,
+        "run_text": " INFO",
+        "style": "Normal"
+      },
+      {
+        "para_index": 14,
+        "run_text": "Nom et pr\u00e9nom",
+        "style": "Normal"
+      }
+    ]
+  },
+  "notes": [
+    "Direct formatting is not always wrong, but it often causes inconsistent output when templates change.",
+    "Heading-like paragraphs not using Heading styles can break TOC and accessibility."
+  ]
+}

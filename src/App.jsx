@@ -36,10 +36,10 @@ function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />
           <Route path="/catalogue" element={<Catalogue />} />
-          <Route path="/produit/:id" element={<ProductDetail />} />
+          <Route path="/produit/:slug" element={<ProductDetail />} />
           <Route path="/formulaire" element={<Formulaire />} />
-          <Route path="/formulaire/:productId" element={<Formulaire />} />
-          <Route path="/simulation/:simulationId" element={<Simulation />} />
+          <Route path="/formulaire/:productSlug" element={<Formulaire />} />
+          <Route path="/simulation/:reference" element={<Simulation />} />
           <Route path="/rendez-vous" element={<RendezVous />} />
         </Route>
       </Routes>

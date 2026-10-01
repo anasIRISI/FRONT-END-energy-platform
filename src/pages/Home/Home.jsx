@@ -29,8 +29,8 @@ const Home = () => {
           <path d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3ZM9 17H7V10H9V17ZM13 17H11V7H13V17ZM17 17H15V13H17V17Z" />
         </svg>
       ),
-      title: 'Primes régionales',
-      description: 'Calcul automatique des primes selon votre région (Wallonie, Bruxelles, Flandre)',
+      title: 'Aides régionales',
+      description: 'Conditions et estimation disponibles selon votre région et votre projet',
     },
     {
       icon: (
@@ -78,7 +78,7 @@ const Home = () => {
             <h1>Votre transition énergétique commence ici</h1>
             <p>
               Découvrez les meilleures solutions d'énergie durable pour votre habitation ou votre entreprise en Belgique.
-              Simulation gratuite, primes régionales incluses.
+              Simulation gratuite, avec estimation des économies et conditions régionales à vérifier.
             </p>
             <div className="hero-actions">
               <button className="btn btn-primary" onClick={() => navigate('/formulaire')}>
@@ -132,7 +132,7 @@ const Home = () => {
 
       <section className="features-section">
         <div className="container">
-          <h2>Pourquoi choisir EnergiePlus ?</h2>
+          <h2>Pourquoi choisir EcoReno+ ?</h2>
           <div className="features-grid">
             {features.map((feature, index) => (
               <div key={index} className="feature-card">

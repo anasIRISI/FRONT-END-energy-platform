@@ -1,11 +1,12 @@
 import { useNavigate } from 'react-router-dom';
+import { formPath, productPath } from '../../utils/routes';
 import './ProductCard.css';
 
 const ProductCard = ({ product }) => {
   const navigate = useNavigate();
 
   return (
-    <div className="product-card-item card" onClick={() => navigate(`/produit/${product.id}`)}>
+    <div className="product-card-item card" onClick={() => navigate(productPath(product))}>
       <div className="product-card-header">
         <div className="product-card-image">{product.image}</div>
         <div className="product-card-badge">{product.power}</div>
@@ -25,16 +26,12 @@ const ProductCard = ({ product }) => {
         </ul>
       </div>
       <div className="product-card-footer">
-        <div className="product-card-price">
-          <span className="price-label">À partir de</span>
-          <span className="price-value">{product.price.toLocaleString('fr-BE')} €</span>
-        </div>
         <div className="product-card-actions">
           <button
             className="btn btn-secondary"
             onClick={(e) => {
               e.stopPropagation();
-              navigate(`/produit/${product.id}`);
+              navigate(productPath(product));
             }}
           >
             Détails
@@ -43,7 +40,7 @@ const ProductCard = ({ product }) => {
             className="btn btn-primary"
             onClick={(e) => {
               e.stopPropagation();
-              navigate(`/formulaire/${product.id}`);
+              navigate(formPath(product));
             }}
           >
             Simuler

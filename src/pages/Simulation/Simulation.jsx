@@ -1,108 +1,239 @@
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { generateSimulation } from '../../utils/simulation';
-import { getSimulationById } from '../../services/api';
+import { getSimulationByReference, rememberSimulation } from '../../services/api';
 import './Simulation.css';
 
-// Helper pour convertir et sécuriser les nombres
-const safeNumber = (val, fallback = 0) => {
-  if (val === null || val === undefined) return fallback;
-  const num = parseFloat(val);
-  return isNaN(num) ? fallback : num;
+const POLLING_INTERVAL_MS = 3000;
+const POLLING_TIMEOUT_MS = 60000;
+const PENDING_STATUSES = new Set(['EN_ATTENTE', 'EN_COURS', 'PENDING', 'PROCESSING']);
+const COMPLETED_STATUSES = new Set(['TERMINEE', 'TERMINE', 'COMPLETEE', 'COMPLETED']);
+const RECOMMENDATION_PRESENTATION = [
+  { icon: '📊', title: 'Votre position PEB' },
+  { icon: '🏠', title: 'Priorité pour votre logement' },
+  { icon: '⚙️', title: 'Optimiser votre projet' },
+  { icon: '✅', title: 'Avant de décider' },
+];
+
+const getSimulationStatus = (simulation) => String(simulation?.statut || simulation?.status || '').toUpperCase();
+
+const getApiErrorMessage = (error) => {
+  const payload = error?.response?.data;
+  const validationErrors = payload?.errors;
+
+  if (Array.isArray(validationErrors)) return validationErrors.join(' ');
+  if (validationErrors && typeof validationErrors === 'object') {
+    return Object.values(validationErrors).flat().join(' ');
+  }
+
+  return payload?.message || payload?.detail || error?.message || 'Impossible de récupérer cette simulation.';
 };
 
-// Normalisation robuste des données de simulation (locales ou venant du backend Spring Boot)
+const toNumberOrNull = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+
+const formatCurrencyOrPending = (value) => {
+  const number = toNumberOrNull(value);
+  return number === null ? 'À confirmer' : `${number.toLocaleString('fr-BE')} €`;
+};
+
+const formatNumberOrPending = (value, unit) => {
+  const number = toNumberOrNull(value);
+  return number === null ? 'À confirmer' : `${number.toLocaleString('fr-BE')} ${unit}`;
+};
+
+const formatRangeOrPending = (minimum, maximum, unit) => {
+  const min = toNumberOrNull(minimum);
+  const max = toNumberOrNull(maximum);
+  if (min === null || max === null) return 'À confirmer';
+  return `${min.toLocaleString('fr-BE')} – ${max.toLocaleString('fr-BE')} ${unit}`;
+};
+
+// Normalisation des résultats effectivement terminés par le backend Spring Boot.
 const normalizeSimulation = (raw) => {
-  if (!raw) {
-    return generateSimulation({ profil: 'particulier', region: 'Wallonie', consommationActuelle: 3500 }, 1);
-  }
+  const scoreVal = raw.score?.valeur != null
+    ? toNumberOrNull(raw.score.valeur)
+    : (raw.scoreValeur != null ? toNumberOrNull(raw.scoreValeur) : (typeof raw.score === 'number' ? raw.score : null));
 
-  const estimatedCost = raw.coutEstime != null 
-    ? safeNumber(raw.coutEstime, 8500) 
-    : (raw.produit?.prix != null ? safeNumber(raw.produit.prix, 8500) : 8500);
-
-  const totalPrimes = raw.primes?.total != null 
-    ? safeNumber(raw.primes.total, 2500) 
-    : 2500;
-
-  const finalCost = raw.coutFinal != null 
-    ? safeNumber(raw.coutFinal, Math.max(0, estimatedCost - totalPrimes)) 
-    : Math.max(0, estimatedCost - totalPrimes);
-
-  const annualSavings = raw.economiesAnnuelles != null 
-    ? safeNumber(raw.economiesAnnuelles, 1200) 
-    : 1200;
-
-  const roi = raw.retourInvestissement != null 
-    ? safeNumber(raw.retourInvestissement, 5.0) 
-    : (finalCost > 0 ? parseFloat((finalCost / Math.max(1, annualSavings)).toFixed(1)) : 5.0);
-
-  const scoreVal = raw.score?.valeur != null 
-    ? safeNumber(raw.score.valeur, 8.5) 
-    : (typeof raw.score === 'number' ? raw.score : 8.5);
-
-  let recommendations = [
-    { icon: '☀️', titre: 'Production solaire optimale', description: 'Orientation et inclinaison idéales.' },
-    { icon: '🔋', titre: 'Autoconsommation', description: 'Stockage par batterie fortement conseillé.' },
-  ];
+  let recommendations = [];
 
   if (Array.isArray(raw.score?.recommandations) && raw.score.recommandations.length > 0) {
-    recommendations = raw.score.recommandations.map((r) => ({
-      icon: '💡',
-      titre: r.titre || 'Recommandation IA',
-      description: typeof r === 'string' ? r : (r.description || 'Optimisation énergétique conseillée.'),
+    recommendations = raw.score.recommandations.slice(0, 4).map((r, index) => ({
+      icon: RECOMMENDATION_PRESENTATION[index].icon,
+      titre: RECOMMENDATION_PRESENTATION[index].title,
+      description: typeof r === 'string' ? r : (r.description || r.contenu || ''),
     }));
   } else if (Array.isArray(raw.recommandations) && raw.recommandations.length > 0) {
-    recommendations = raw.recommandations.map((r) => typeof r === 'string' ? { icon: '💡', titre: 'Conseil', description: r } : r);
+    recommendations = raw.recommandations.slice(0, 4).map((r, index) => {
+      const presentation = RECOMMENDATION_PRESENTATION[index];
+      return typeof r === 'string'
+        ? { icon: presentation.icon, titre: presentation.title, description: r }
+        : { ...r, icon: r.icon || presentation.icon, titre: r.titre || r.title || presentation.title };
+    });
   }
 
+  const coutEstime = toNumberOrNull(raw.coutEstime) ?? toNumberOrNull(raw.produit?.prix);
+  const economiesEnergieMinKwh = toNumberOrNull(raw.economiesEnergieMinKwh);
+  const economiesEnergieMaxKwh = toNumberOrNull(raw.economiesEnergieMaxKwh);
+  const economiesAnnuelles = toNumberOrNull(raw.economiesAnnuelles);
+  const economiesAnnuellesMin = toNumberOrNull(raw.economiesAnnuellesMin);
+  const economiesAnnuellesMax = toNumberOrNull(raw.economiesAnnuellesMax);
+  const coutEnergieAnnuelAvant = toNumberOrNull(raw.coutEnergieAnnuelAvant);
+  const coutEnergieAnnuelApresMin = toNumberOrNull(raw.coutEnergieAnnuelApresMin);
+  const coutEnergieAnnuelApresMax = toNumberOrNull(raw.coutEnergieAnnuelApresMax);
+  const primeEstimee = toNumberOrNull(raw.primeEstimee);
+  const primesTotal = primeEstimee ?? toNumberOrNull(raw.primes?.total) ?? 0;
+  const coutFinal = toNumberOrNull(raw.coutFinal) ?? (coutEstime === null ? null : Math.max(0, coutEstime - primesTotal));
+  const averageAnnualSavings = economiesAnnuelles !== null
+    ? economiesAnnuelles
+    : (economiesAnnuellesMin !== null && economiesAnnuellesMax !== null
+      ? (economiesAnnuellesMin + economiesAnnuellesMax) / 2
+      : null);
+  const retourInvestissement = toNumberOrNull(raw.retourInvestissement)
+    ?? (coutFinal !== null && averageAnnualSavings && averageAnnualSavings > 0
+      ? Number((coutFinal / averageAnnualSavings).toFixed(1))
+      : null);
+
   return {
-    id: raw.id || 1,
+    id: raw.id,
+    productName: raw.produit?.nom || raw.produit?.name || raw.product?.nom || raw.product?.name || '',
+    productType: raw.produit?.type || '',
     score: scoreVal,
-    coutEstime: estimatedCost,
+    scoreCriteres: raw.score?.criteres || raw.scoreCriteres || '',
+    coutEstime,
     primes: {
-      total: totalPrimes,
-      regionale: raw.primes?.regionale || totalPrimes,
-      degressivite: raw.primes?.degressivite || 0,
+      total: primesTotal,
+      regionale: toNumberOrNull(raw.primes?.regionale),
+      degressivite: toNumberOrNull(raw.primes?.degressivite),
     },
-    coutFinal: finalCost,
-    economiesAnnuelles: annualSavings,
-    retourInvestissement: roi,
-    reductionCO2: raw.reductionCO2 || '2.8',
-    productionAnnuelle: raw.productionAnnuelle || 4500,
-    autoconsommation: raw.autoconsommation || 75,
+    primeEstimee,
+    primeStatut: raw.primeStatut || '',
+    primeSourceUrl: raw.primeSourceUrl || '',
+    coutFinal,
+    economiesAnnuelles,
+    economiesAnnuellesMin,
+    economiesAnnuellesMax,
+    coutEnergieAnnuelAvant,
+    coutEnergieAnnuelApresMin,
+    coutEnergieAnnuelApresMax,
+    economiesEnergieMinKwh,
+    economiesEnergieMaxKwh,
+    retourInvestissement,
+    reductionCO2: toNumberOrNull(raw.reductionCO2),
+    productionAnnuelle: toNumberOrNull(raw.productionAnnuelle),
+    autoconsommation: toNumberOrNull(raw.autoconsommation),
     recommandations: recommendations,
   };
 };
 
 const Simulation = () => {
-  const { simulationId } = useParams();
+  const { reference } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const [simulationData, setSimulationData] = useState(null);
+  const [isWaiting, setIsWaiting] = useState(false);
+  const [pollingTimedOut, setPollingTimedOut] = useState(false);
+  const [status, setStatus] = useState('');
+  const [error, setError] = useState('');
+  const initialSimulation = location.state?.simulation;
 
   useEffect(() => {
-    if (location.state?.simulation) {
-      setSimulationData(normalizeSimulation(location.state.simulation));
-    } else if (simulationId) {
-      getSimulationById(simulationId)
-        .then((res) => {
-          setSimulationData(normalizeSimulation(res));
-        })
-        .catch(() => {
-          setSimulationData(normalizeSimulation(null));
-        });
-    } else {
-      setSimulationData(normalizeSimulation(null));
-    }
-  }, [location, simulationId]);
+    const simulationReference = reference || initialSimulation?.referencePublique;
+    let cancelled = false;
+    let timerId;
+    let initialResult = initialSimulation;
+    const startedAt = Date.now();
 
-  if (!simulationData) {
+    setSimulationData(null);
+    setIsWaiting(false);
+    setPollingTimedOut(false);
+    setStatus('');
+    setError('');
+
+    if (!simulationReference) {
+      setError('Aucune simulation à afficher. Veuillez relancer le formulaire.');
+      return undefined;
+    }
+
+    const pollSimulation = async () => {
+      try {
+        const result = initialResult || await getSimulationByReference(simulationReference);
+        initialResult = null;
+
+        if (cancelled) return;
+
+        const backendStatus = getSimulationStatus(result);
+        setStatus(backendStatus);
+
+        if (COMPLETED_STATUSES.has(backendStatus)) {
+          rememberSimulation(result);
+          setSimulationData(normalizeSimulation(result));
+          setIsWaiting(false);
+          return;
+        }
+
+        if (PENDING_STATUSES.has(backendStatus)) {
+          setIsWaiting(true);
+
+          if (Date.now() - startedAt >= POLLING_TIMEOUT_MS) {
+            setPollingTimedOut(true);
+            return;
+          }
+
+          timerId = window.setTimeout(pollSimulation, POLLING_INTERVAL_MS);
+          return;
+        }
+
+        throw new Error(`Statut de simulation inattendu : ${backendStatus || 'inconnu'}.`);
+      } catch (requestError) {
+        if (!cancelled) {
+          setError(getApiErrorMessage(requestError));
+          setIsWaiting(false);
+        }
+      }
+    };
+
+    pollSimulation();
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timerId);
+    };
+  }, [initialSimulation, reference]);
+
+  if (error) {
     return (
       <div className="simulation">
         <div className="container">
-          <div className="card" style={{ padding: '48px', textAlign: 'center' }}>
-            <h2>Chargement de votre simulation...</h2>
+          <div className="simulation-status-card card simulation-status-card--error">
+            <h1>Simulation indisponible</h1>
+            <p>{error}</p>
+            <button className="btn btn-secondary" onClick={() => navigate('/formulaire')}>
+              Retour au formulaire
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isWaiting || !simulationData) {
+    return (
+      <div className="simulation">
+        <div className="container">
+          <div className="simulation-status-card card">
+            <div className="simulation-status-icon" aria-hidden="true">⏳</div>
+            <h1>Votre simulation est en cours de calcul</h1>
+            <p>
+              {pollingTimedOut
+                ? 'Le calcul prend plus de temps que prévu. Votre demande est enregistrée : revenez dans quelques instants pour consulter le résultat.'
+                : 'Nous récupérons automatiquement le résultat dès que le calcul est terminé.'}
+            </p>
+            <button className="btn btn-secondary" onClick={() => navigate('/catalogue')}>
+              Retour au catalogue
+            </button>
           </div>
         </div>
       </div>
@@ -111,26 +242,37 @@ const Simulation = () => {
 
   // Construction des détails à afficher
   const details = [];
-  if (simulationData.productionAnnuelle) {
+  const isSolarProduct = simulationData.productType.toLocaleLowerCase('fr-BE').includes('panneau');
+  if (isSolarProduct && simulationData.productionAnnuelle !== null) {
     details.push({
       label: 'Production annuelle estimée',
-      value: `${safeNumber(simulationData.productionAnnuelle, 4500).toLocaleString('fr-BE')} kWh`,
+      value: formatNumberOrPending(simulationData.productionAnnuelle, 'kWh'),
     });
   }
-  if (simulationData.autoconsommation) {
+  if (isSolarProduct && simulationData.autoconsommation !== null) {
     details.push({
       label: 'Autoconsommation',
-      value: `${safeNumber(simulationData.autoconsommation, 75)}%`,
+      value: formatNumberOrPending(simulationData.autoconsommation, '%'),
     });
   }
-  details.push({
-    label: 'Réduction CO2',
-    value: `${simulationData.reductionCO2} tonnes/an`,
-  });
-  details.push({
-    label: 'Durée de vie',
-    value: '25 ans',
-  });
+  if (simulationData.reductionCO2 !== null) {
+    details.push({
+      label: 'Réduction CO2',
+      value: formatNumberOrPending(simulationData.reductionCO2, 'tonnes/an'),
+    });
+  }
+
+  const hasEuroSavings = simulationData.economiesAnnuellesMin !== null && simulationData.economiesAnnuellesMax !== null;
+  const hasEnergySavings = simulationData.economiesEnergieMinKwh !== null && simulationData.economiesEnergieMaxKwh !== null;
+  const savingsLabel = hasEuroSavings ? 'Économies annuelles estimées' : 'Économies d’énergie estimées';
+  const savingsValue = hasEuroSavings
+    ? formatRangeOrPending(simulationData.economiesAnnuellesMin, simulationData.economiesAnnuellesMax, '€/an')
+    : hasEnergySavings
+      ? formatRangeOrPending(simulationData.economiesEnergieMinKwh, simulationData.economiesEnergieMaxKwh, 'kWh/an')
+      : formatNumberOrPending(simulationData.economiesAnnuelles, '€/an');
+  const monthlySavings = hasEuroSavings
+    ? formatRangeOrPending(simulationData.economiesAnnuellesMin / 12, simulationData.economiesAnnuellesMax / 12, '€/mois')
+    : 'Renseignez votre prix €/kWh';
 
   const getScoreColor = (score) => {
     if (score >= 8) return 'var(--secondary-color)';
@@ -152,7 +294,15 @@ const Simulation = () => {
             ← Retour au catalogue
           </button>
           <h1>Résultats de votre simulation</h1>
-          <p>Simulation #{simulationId || simulationData.id}</p>
+          {simulationData.productName && (
+            <p className="simulation-selected-product">
+              Solution sélectionnée : <strong>{simulationData.productName}</strong>
+            </p>
+          )}
+          <div className="simulation-complete-badge" role="status">
+            <span aria-hidden="true">✓</span>
+            Simulation terminée
+          </div>
         </div>
 
         <div className="simulation-grid">
@@ -163,17 +313,19 @@ const Simulation = () => {
                 <div
                   className="score-circle"
                   style={{
-                    background: `conic-gradient(${getScoreColor(simulationData.score)} ${
-                      simulationData.score * 10
-                    }%, var(--bg-secondary) 0)`,
+                    background: simulationData.score === null
+                      ? 'var(--bg-secondary)'
+                      : `conic-gradient(${getScoreColor(simulationData.score)} ${simulationData.score * 10}%, var(--bg-secondary) 0)`,
                   }}
                 >
                   <div className="score-inner">
-                    <span className="score-value">{simulationData.score}</span>
-                    <span className="score-max">/10</span>
+                    <span className="score-value">{simulationData.score ?? '—'}</span>
+                    {simulationData.score !== null && <span className="score-max">/10</span>}
                   </div>
                 </div>
-                <div className="score-label">{getScoreLabel(simulationData.score)}</div>
+                <div className="score-label">
+                  {simulationData.score === null ? 'À confirmer' : getScoreLabel(simulationData.score)}
+                </div>
               </div>
             </div>
 
@@ -181,70 +333,106 @@ const Simulation = () => {
               <h2>Estimation financière</h2>
               <div className="cost-breakdown">
                 <div className="cost-row">
-                  <span>Coût initial</span>
+                  <span>Budget indicatif de la solution</span>
                   <span className="cost-value">
-                    {safeNumber(simulationData.coutEstime, 8500).toLocaleString('fr-BE')} €
+                    {formatCurrencyOrPending(simulationData.coutEstime)}
                   </span>
                 </div>
-                <div className="cost-row highlight">
-                  <span>Primes et aides</span>
-                  <span className="cost-value green">
-                    -{safeNumber(simulationData.primes?.total, 2500).toLocaleString('fr-BE')} €
-                  </span>
-                </div>
-                <div className="cost-row total">
-                  <span>Coût final</span>
-                  <span className="cost-value">
-                    {safeNumber(simulationData.coutFinal, 6000).toLocaleString('fr-BE')} €
-                  </span>
-                </div>
+                {simulationData.primeEstimee !== null && <>
+                  <div className="cost-row highlight">
+                    <span>Aide régionale estimée déduite du budget</span>
+                    <span className="cost-value green">{formatCurrencyOrPending(simulationData.primes.total)}</span>
+                  </div>
+                  {simulationData.primeStatut && <p className="prime-status">{simulationData.primeStatut}</p>}
+                  {simulationData.primeSourceUrl && <a className="prime-source-link" href={simulationData.primeSourceUrl} target="_blank" rel="noreferrer">Vérifier les conditions officielles</a>}
+                </>}
+                {simulationData.primeEstimee !== null && (
+                  <div className="cost-row total">
+                    <span>Coût net estimé</span>
+                    <span className="cost-value">
+                      {formatCurrencyOrPending(simulationData.coutFinal)}
+                    </span>
+                  </div>
+                )}
               </div>
+              <p className="financial-estimate-note">Le budget correspond au devis TTC renseigné ou, sans devis, au prix catalogue. Un devis professionnel reste nécessaire.</p>
               <div className="savings-info">
+                {simulationData.coutEnergieAnnuelAvant !== null && (
+                  <div className="savings-item">
+                    <div className="savings-icon">🏡</div>
+                    <div>
+                      <p className="savings-label">Votre coût énergie actuel</p>
+                      <p className="savings-value">{formatCurrencyOrPending(simulationData.coutEnergieAnnuelAvant)} / an</p>
+                    </div>
+                  </div>
+                )}
+                {simulationData.coutEnergieAnnuelApresMin !== null && simulationData.coutEnergieAnnuelApresMax !== null && (
+                  <div className="savings-item">
+                    <div className="savings-icon">📉</div>
+                    <div>
+                      <p className="savings-label">Coût énergie après projet</p>
+                      <p className="savings-value">{formatRangeOrPending(simulationData.coutEnergieAnnuelApresMin, simulationData.coutEnergieAnnuelApresMax, '€/an')}</p>
+                    </div>
+                  </div>
+                )}
                 <div className="savings-item">
                   <div className="savings-icon">💰</div>
                   <div>
-                    <p className="savings-label">Économies annuelles</p>
+                    <p className="savings-label">{savingsLabel}</p>
                     <p className="savings-value">
-                      {safeNumber(simulationData.economiesAnnuelles, 1200).toLocaleString('fr-BE')} €/an
+                      {savingsValue}
                     </p>
                   </div>
                 </div>
                 <div className="savings-item">
                   <div className="savings-icon">📊</div>
                   <div>
-                    <p className="savings-label">Retour sur investissement</p>
-                    <p className="savings-value">{safeNumber(simulationData.retourInvestissement, 5.0)} ans</p>
+                    <p className="savings-label">Retour sur investissement estimé</p>
+                    <p className="savings-value">{formatNumberOrPending(simulationData.retourInvestissement, 'ans')}</p>
+                  </div>
+                </div>
+                <div className="savings-item">
+                  <div className="savings-icon">📅</div>
+                  <div>
+                    <p className="savings-label">Économie mensuelle estimée</p>
+                    <p className="savings-value">{monthlySavings}</p>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="details-card card">
-              <h2>Détails techniques</h2>
-              <div className="details-grid">
-                {details.map((detail, index) => (
-                  <div key={index} className="detail-item">
-                    <span className="detail-label">{detail.label}</span>
-                    <span className="detail-value">{detail.value}</span>
-                  </div>
-                ))}
+            {details.length > 0 && (
+              <div className="details-card card">
+                <h2>Détails techniques</h2>
+                <div className="details-grid">
+                  {details.map((detail, index) => (
+                    <div key={index} className="detail-item">
+                      <span className="detail-label">{detail.label}</span>
+                      <span className="detail-value">{detail.value}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div className="simulation-sidebar">
             <div className="recommendations-card card">
-              <h3>Recommandations</h3>
+              <h3>Conseils EcoReno+</h3>
               <div className="recommendations-list">
-                {simulationData.recommandations.map((reco, index) => (
-                  <div key={index} className="recommendation-item">
-                    <div className="recommendation-icon">{reco.icon || '💡'}</div>
-                    <div>
-                      <h4>{reco.titre || 'Conseil'}</h4>
-                      <p>{reco.description || reco}</p>
+                {simulationData.recommandations.length > 0 ? (
+                  simulationData.recommandations.slice(0, 4).map((reco, index) => (
+                    <div key={index} className="recommendation-item">
+                      <div className="recommendation-icon">{reco.icon || '💡'}</div>
+                      <div>
+                        <h4>{reco.titre || 'Conseil'}</h4>
+                        <p>{reco.description || reco}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="recommendations-pending">Les recommandations sont à confirmer.</p>
+                )}
               </div>
             </div>
 

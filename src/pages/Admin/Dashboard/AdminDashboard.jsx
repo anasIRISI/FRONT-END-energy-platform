@@ -7,6 +7,7 @@ import {
   updateAdminRendezVous,
   getProducts,
   createAdminProduit,
+  updateAdminProduit,
   deleteAdminProduit,
   exportAdminFormulairesCsv,
   exportAdminRendezVousCsv,
@@ -38,10 +39,12 @@ const AdminDashboard = () => {
 
   // Liste des Rendez-vous
   const [appointments, setAppointments] = useState([]);
+  const [appointmentFilter, setAppointmentFilter] = useState('PLANIFIE');
 
   // Liste des Produits
   const [productsList, setProductsList] = useState([]);
   const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
   const [newProduct, setNewProduct] = useState({
     nom: '',
     type: 'panneaux',
@@ -52,6 +55,8 @@ const AdminDashboard = () => {
   // Message de statut/feedback
   const [feedback, setFeedback] = useState('');
   const [loading, setLoading] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
+  const [statsLoadError, setStatsLoadError] = useState('');
 
   // Chargement des données au montage
   useEffect(() => {
@@ -63,12 +68,29 @@ const AdminDashboard = () => {
     loadDashboardData();
   }, [navigate]);
 
+  // Le tableau de bord reste synchronisé avec les demandes qui arrivent du site.
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') loadDashboardData();
+    };
+    const refreshInterval = window.setInterval(loadDashboardData, 15000);
+    window.addEventListener('focus', refreshWhenVisible);
+    return () => {
+      window.clearInterval(refreshInterval);
+      window.removeEventListener('focus', refreshWhenVisible);
+    };
+  }, []);
+
   const loadDashboardData = async () => {
     setLoading(true);
     try {
       // 1. Statistiques
-      const statsData = await getAdminStatistiques().catch(() => null);
+      const statsData = await getAdminStatistiques().catch((error) => {
+        setStatsLoadError(error.response?.data?.message || 'Impossible d’actualiser les statistiques.');
+        return null;
+      });
       if (statsData) {
+        setStatsLoadError('');
         setStats({
           formulairesRecus: statsData.formulairesRecus || 0,
           totalVisiteurs: statsData.totalVisiteurs || 0,
@@ -90,6 +112,7 @@ const AdminDashboard = () => {
       // 4. Produits
       const prodsData = await getProducts('all').catch(() => []);
       setProductsList(prodsData || []);
+      setLastUpdatedAt(new Date());
     } catch (err) {
       console.error('Erreur chargement données dashboard:', err);
     } finally {
@@ -100,7 +123,7 @@ const AdminDashboard = () => {
   const handleLogout = () => {
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_user');
-    navigate('/admin/login');
+    navigate('/');
   };
 
   // Export CSV spécifique à chaque onglet
@@ -129,9 +152,14 @@ const AdminDashboard = () => {
 
   // Modification statut RDV
   const handleUpdateRdvStatus = async (id, newStatut) => {
+    if (newStatut === 'ANNULE' && !window.confirm('Annuler ce rendez-vous ? Il sera supprimé du planning et un e-mail sera envoyé au visiteur.')) {
+      return;
+    }
     try {
       await updateAdminRendezVous(id, newStatut);
-      setFeedback(`Rendez-vous #${id} mis à jour : ${newStatut}`);
+      setFeedback(newStatut === 'CONFIRME'
+        ? `Rendez-vous #${id} confirmé. L’e-mail de confirmation a été transmis au service de messagerie.`
+        : `Rendez-vous #${id} annulé, supprimé du planning et transmis au service de messagerie.`);
       setTimeout(() => setFeedback(''), 3000);
       loadDashboardData();
     } catch (err) {
@@ -150,13 +178,43 @@ const AdminDashboard = () => {
         prix: parseFloat(newProduct.prix),
         specifications: newProduct.specifications,
       });
-      setFeedback(`Produit "${newProduct.nom}" créé avec succès dans Spring Boot !`);
+      setFeedback(`Produit « ${newProduct.nom} » enregistré.`);
       setShowAddProductModal(false);
       setNewProduct({ nom: '', type: 'panneaux', prix: '', specifications: '' });
       setTimeout(() => setFeedback(''), 4000);
       loadDashboardData();
     } catch (err) {
       alert('Erreur création produit: ' + err.message);
+    }
+  };
+
+  const startProductEdit = (product) => {
+    setEditingProduct({
+      id: product.id,
+      nom: product.nom || product.name || '',
+      type: product.type || 'panneaux',
+      prix: String(product.prix ?? product.price ?? ''),
+      specifications: typeof product.specifications === 'string'
+        ? product.specifications
+        : '',
+    });
+  };
+
+  const handleUpdateProduct = async (event) => {
+    event.preventDefault();
+    if (!editingProduct?.nom || !editingProduct?.prix) return;
+    try {
+      await updateAdminProduit(editingProduct.id, {
+        nom: editingProduct.nom,
+        type: editingProduct.type,
+        prix: parseFloat(editingProduct.prix),
+        specifications: editingProduct.specifications,
+      });
+      setFeedback(`Produit « ${editingProduct.nom} » modifié.`);
+      setEditingProduct(null);
+      loadDashboardData();
+    } catch (err) {
+      alert(err.response?.data?.message || 'La modification du produit a échoué.');
     }
   };
 
@@ -169,7 +227,7 @@ const AdminDashboard = () => {
       setTimeout(() => setFeedback(''), 3000);
       loadDashboardData();
     } catch (err) {
-      alert('Erreur suppression produit: ' + err.message);
+      alert(err.response?.data?.message || 'La suppression du produit a échoué.');
     }
   };
 
@@ -188,6 +246,14 @@ const AdminDashboard = () => {
     return matchSearch && matchRegion && matchProfil;
   });
 
+  const filteredAppointments = appointments.filter((appointment) => appointment.statut === appointmentFilter);
+  const activeAppointments = appointments.filter((appointment) => appointment.statut !== 'ANNULE');
+  const submittedForms = formsList.filter((form) => Boolean(form.dateSoumission));
+  const submittedVisitors = [...new Map(submittedForms.map((form) => [form.visiteurId, form])).values()];
+  const submittedIndividuals = submittedVisitors.filter((form) => String(form.profil).toUpperCase() === 'PARTICULIER').length;
+  const submittedCompanies = submittedVisitors.filter((form) => String(form.profil).toUpperCase() === 'SOCIETE').length;
+  const profilesWithoutSubmittedForm = Math.max(0, stats.totalVisiteurs - submittedVisitors.length);
+
   const getStatutClass = (statut) => {
     if (!statut) return 'statut-default';
     const s = statut.toUpperCase();
@@ -201,7 +267,7 @@ const AdminDashboard = () => {
       <aside className="admin-sidebar">
         <div className="sidebar-header">
           <h2>🔐 Admin</h2>
-          <p>EnergiePlus Platform</p>
+          <p>Plateforme EcoReno+</p>
         </div>
 
         <nav className="sidebar-nav">
@@ -224,7 +290,7 @@ const AdminDashboard = () => {
             onClick={() => setActiveTab('appointments')}
           >
             <span className="nav-icon">📅</span>
-            Rendez-vous ({appointments.length})
+            Rendez-vous ({activeAppointments.length})
           </button>
           <button
             className={`nav-item ${activeTab === 'products' ? 'active' : ''}`}
@@ -243,9 +309,6 @@ const AdminDashboard = () => {
         </nav>
 
         <div className="sidebar-footer">
-          <button className="btn-link" onClick={() => navigate('/')}>
-            ← Retour au site
-          </button>
           <button className="btn btn-secondary" onClick={handleLogout}>
             Déconnexion
           </button>
@@ -257,12 +320,14 @@ const AdminDashboard = () => {
           <div>
             <h1>
               {activeTab === 'overview' && 'Vue d\'ensemble'}
-              {activeTab === 'forms' && 'Gestion des formulaires & Visiteurs'}
+              {activeTab === 'forms' && 'Formulaires et visiteurs'}
               {activeTab === 'appointments' && 'Gestion du planning des rendez-vous'}
-              {activeTab === 'products' && 'Gestion du catalogue de produits'}
+              {activeTab === 'products' && 'Catalogue de produits'}
               {activeTab === 'stats' && 'Statistiques détaillées'}
             </h1>
             {feedback && <div style={{ color: 'var(--secondary-color)', fontWeight: 'bold', marginTop: '8px' }}>✅ {feedback}</div>}
+            {statsLoadError && <div className="admin-load-error">⚠️ {statsLoadError}</div>}
+            {lastUpdatedAt && <div className="admin-last-updated">Mis à jour à {lastUpdatedAt.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}</div>}
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
             <button className="btn btn-secondary" onClick={loadDashboardData} disabled={loading}>
@@ -270,7 +335,7 @@ const AdminDashboard = () => {
             </button>
             <button className="btn btn-primary" onClick={handleExportCsv}>
               📥 {activeTab === 'overview' && "Exporter la Vue d'ensemble (CSV)"}
-              {activeTab === 'forms' && 'Exporter les Formulaires CRM (CSV)'}
+              {activeTab === 'forms' && 'Exporter les formulaires (CSV)'}
               {activeTab === 'appointments' && 'Exporter les Rendez-vous (CSV)'}
               {activeTab === 'products' && 'Exporter les Produits (CSV)'}
               {activeTab === 'stats' && 'Exporter les Statistiques (CSV)'}
@@ -293,24 +358,24 @@ const AdminDashboard = () => {
               <div className="stat-card card">
                 <div className="stat-icon">👥</div>
                 <div className="stat-content">
-                  <h3>{stats.totalVisiteurs}</h3>
-                  <p>Total Visiteurs</p>
+                  <h3>{submittedVisitors.length}</h3>
+                  <p>Visiteurs avec demande</p>
                 </div>
               </div>
 
               <div className="stat-card card">
                 <div className="stat-icon">🏠</div>
                 <div className="stat-content">
-                  <h3>{stats.particuliers} / {stats.societes}</h3>
-                  <p>Particuliers / Sociétés</p>
+                  <h3>{submittedIndividuals} / {submittedCompanies}</h3>
+                  <p>Demandes particuliers / sociétés</p>
                 </div>
               </div>
 
               <div className="stat-card card">
                 <div className="stat-icon">📅</div>
                 <div className="stat-content">
-                  <h3>{appointments.length}</h3>
-                  <p>Rendez-vous au total</p>
+                  <h3>{activeAppointments.length}</h3>
+                  <p>Rendez-vous actifs</p>
                 </div>
               </div>
             </div>
@@ -364,10 +429,10 @@ const AdminDashboard = () => {
               <div className="section-card card">
                 <h2>Prochains rendez-vous</h2>
                 <div className="appointments-list">
-                  {appointments.length === 0 ? (
+                  {activeAppointments.length === 0 ? (
                     <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Aucun rendez-vous planifié.</p>
                   ) : (
-                    appointments.slice(0, 4).map((appt) => (
+                    activeAppointments.slice(0, 4).map((appt) => (
                       <div key={appt.id} className="appointment-item">
                         <div className="appointment-date">
                           <div className="date-day">{appt.date ? appt.date.split('-')[2] || 'RDV' : 'RDV'}</div>
@@ -389,7 +454,7 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {/* 2. FORMULAIRES CRM */}
+        {/* 2. FORMULAIRES */}
         {activeTab === 'forms' && (
           <div className="forms-management">
             <div className="filters-bar card">
@@ -471,12 +536,19 @@ const AdminDashboard = () => {
         {activeTab === 'appointments' && (
           <div className="appointments-management">
             <div className="calendar-view card">
-              <h2>📅 Planning des rendez-vous ({appointments.length})</h2>
+              <div className="appointments-heading">
+                <h2>📅 Gestion des rendez-vous</h2>
+                <div className="appointment-filters" role="group" aria-label="Filtrer les rendez-vous">
+                  <button className={`appointment-filter ${appointmentFilter === 'PLANIFIE' ? 'active' : ''}`} onClick={() => setAppointmentFilter('PLANIFIE')}>En attente ({appointments.filter((a) => a.statut === 'PLANIFIE').length})</button>
+                  <button className={`appointment-filter ${appointmentFilter === 'CONFIRME' ? 'active' : ''}`} onClick={() => setAppointmentFilter('CONFIRME')}>Planifiés ({appointments.filter((a) => a.statut === 'CONFIRME').length})</button>
+                  <button className={`appointment-filter ${appointmentFilter === 'ANNULE' ? 'active' : ''}`} onClick={() => setAppointmentFilter('ANNULE')}>Annulés ({appointments.filter((a) => a.statut === 'ANNULE').length})</button>
+                </div>
+              </div>
               <div className="appointments-grid">
-                {appointments.length === 0 ? (
-                  <p className="info-text">Aucun rendez-vous à afficher.</p>
+                {filteredAppointments.length === 0 ? (
+                  <p className="info-text">Aucun rendez-vous dans cette catégorie.</p>
                 ) : (
-                  appointments.map((appt) => (
+                  filteredAppointments.map((appt) => (
                     <div key={appt.id} className="appointment-card card">
                       <div className="appointment-header">
                         <h4>Rendez-vous #{appt.id}</h4>
@@ -490,18 +562,22 @@ const AdminDashboard = () => {
                         <p>🕐 Heure: <strong>{appt.heure}</strong></p>
                       </div>
                       <div className="appointment-actions">
-                        <button
-                          className="btn-small btn-secondary"
-                          onClick={() => handleUpdateRdvStatus(appt.id, 'ANNULE')}
-                        >
-                          Annuler
-                        </button>
-                        <button
-                          className="btn-small btn-primary"
-                          onClick={() => handleUpdateRdvStatus(appt.id, 'CONFIRME')}
-                        >
-                          Confirmer
-                        </button>
+                        {appt.statut !== 'ANNULE' && appt.statut !== 'CONFIRME' && (
+                          <>
+                            <button
+                              className="btn-small btn-secondary"
+                              onClick={() => handleUpdateRdvStatus(appt.id, 'ANNULE')}
+                            >
+                              Annuler et envoyer l’e-mail
+                            </button>
+                            <button
+                              className="btn-small btn-primary"
+                              onClick={() => handleUpdateRdvStatus(appt.id, 'CONFIRME')}
+                            >
+                              Confirmer et envoyer l’e-mail
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   ))
@@ -532,7 +608,7 @@ const AdminDashboard = () => {
                     <th>Nom du produit</th>
                     <th>Type</th>
                     <th>Prix (€)</th>
-                    <th>Spécifications</th>
+                    <th>Description</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -558,12 +634,24 @@ const AdminDashboard = () => {
                             : 'N/A'}
                         </td>
                         <td>
-                          <button
-                            className="btn-small btn-secondary"
-                            onClick={() => handleDeleteProduct(p.id, p.name || p.nom)}
-                          >
-                            🗑️ Supprimer
-                          </button>
+                          <div className="product-table-actions">
+                            <button
+                              className="product-action-button product-action-button--edit"
+                              onClick={() => startProductEdit(p)}
+                              title="Modifier le produit"
+                              aria-label="Modifier le produit"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              className="product-action-button product-action-button--delete"
+                              onClick={() => handleDeleteProduct(p.id, p.name || p.nom)}
+                              title="Supprimer le produit"
+                              aria-label="Supprimer le produit"
+                            >
+                              🗑️
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -579,7 +667,7 @@ const AdminDashboard = () => {
           <div className="stats-management">
             <div className="charts-grid">
               <div className="chart-card card">
-                <h3>📊 Formulaires par région (Backend)</h3>
+                <h3>📊 Profils créés par région</h3>
                 <div className="chart-placeholder">
                   <div className="bar" style={{ height: '80%' }}>
                     <span>Wallonie</span>
@@ -606,12 +694,12 @@ const AdminDashboard = () => {
                     </h2>
                   </div>
                   <div>
-                    <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Visiteurs Particuliers</p>
-                    <h3 style={{ margin: '4px 0' }}>{stats.particuliers}</h3>
+                    <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Profils créés sans demande envoyée</p>
+                    <h3 style={{ margin: '4px 0' }}>{profilesWithoutSubmittedForm}</h3>
                   </div>
                   <div>
-                    <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Visiteurs Sociétés</p>
-                    <h3 style={{ margin: '4px 0' }}>{stats.societes}</h3>
+                    <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Demandes particuliers / sociétés</p>
+                    <h3 style={{ margin: '4px 0' }}>{submittedIndividuals} / {submittedCompanies}</h3>
                   </div>
                 </div>
               </div>
@@ -671,12 +759,12 @@ const AdminDashboard = () => {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Spécifications techniques</label>
+                  <label>Description du produit</label>
                   <textarea
                     rows="3"
                     value={newProduct.specifications}
                     onChange={(e) => setNewProduct({ ...newProduct, specifications: e.target.value })}
-                    placeholder="Ex: Puissance 6 kWc, Garantie 25 ans..."
+                    placeholder="Ex. Puissance, dimensions, garantie..."
                   />
                 </div>
                 <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px' }}>
@@ -684,8 +772,43 @@ const AdminDashboard = () => {
                     Annuler
                   </button>
                   <button type="submit" className="btn btn-primary">
-                    Enregistrer dans Spring Boot
+                    Enregistrer
                   </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {editingProduct && (
+          <div className="admin-modal-backdrop">
+            <div className="card admin-product-modal">
+              <h2>Modifier le produit</h2>
+              <form onSubmit={handleUpdateProduct} className="admin-product-form">
+                <div className="form-group">
+                  <label>Nom du produit *</label>
+                  <input type="text" required value={editingProduct.nom} onChange={(e) => setEditingProduct({ ...editingProduct, nom: e.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label>Type de produit *</label>
+                  <select value={editingProduct.type} onChange={(e) => setEditingProduct({ ...editingProduct, type: e.target.value })}>
+                    <option value="panneaux">Panneaux solaires</option>
+                    <option value="batterie">Batterie</option>
+                    <option value="pompe à chaleur">Pompe à chaleur</option>
+                    <option value="isolation">Isolation</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Prix (€) *</label>
+                  <input type="number" min="0" step="0.01" required value={editingProduct.prix} onChange={(e) => setEditingProduct({ ...editingProduct, prix: e.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label>Description du produit</label>
+                  <textarea rows="3" value={editingProduct.specifications} onChange={(e) => setEditingProduct({ ...editingProduct, specifications: e.target.value })} />
+                </div>
+                <div className="admin-modal-actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => setEditingProduct(null)}>Annuler</button>
+                  <button type="submit" className="btn btn-primary">Enregistrer</button>
                 </div>
               </form>
             </div>

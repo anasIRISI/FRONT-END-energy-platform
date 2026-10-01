@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { getLatestSimulation } from '../../services/api';
+import { simulationPath } from '../../utils/routes';
+import ecoRenoLogo from '../../assets/ecoreno-logo.jpeg';
 import './Navbar.css';
 
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [latestSimulation, setLatestSimulation] = useState(null);
   const location = useLocation();
 
   useEffect(() => {
@@ -16,6 +20,20 @@ const Navbar = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  useEffect(() => {
+    const refreshLatestSimulation = () => setLatestSimulation(getLatestSimulation());
+    refreshLatestSimulation();
+    const intervalId = window.setInterval(refreshLatestSimulation, 3000);
+    window.addEventListener('storage', refreshLatestSimulation);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('storage', refreshLatestSimulation);
+    };
+  }, [location.pathname]);
+
+  const simulationIsComplete = ['TERMINEE', 'TERMINE', 'COMPLETEE', 'COMPLETED']
+    .includes(String(latestSimulation?.statut || latestSimulation?.status || '').toUpperCase());
+
   const navLinks = [
     { path: '/', label: 'Accueil' },
     { path: '/catalogue', label: 'Catalogue' },
@@ -25,24 +43,7 @@ const Navbar = () => {
     <nav className={`navbar ${isScrolled ? 'scrolled' : ''}`}>
       <div className="container navbar-container">
         <Link to="/" className="navbar-brand">
-          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-            <rect width="32" height="32" rx="8" fill="url(#logo-gradient)" />
-            <path
-              d="M16 8L22 14H18V20H14V14H10L16 8Z"
-              fill="white"
-            />
-            <path
-              d="M10 22H22V24H10V22Z"
-              fill="white"
-            />
-            <defs>
-              <linearGradient id="logo-gradient" x1="0" y1="0" x2="32" y2="32">
-                <stop stopColor="#1a73e8" />
-                <stop offset="1" stopColor="#34a853" />
-              </linearGradient>
-            </defs>
-          </svg>
-          <span>EnergiePlus</span>
+          <img src={ecoRenoLogo} alt="EcoReno+" className="navbar-logo" />
         </Link>
 
         <div className={`navbar-menu ${isMobileMenuOpen ? 'open' : ''}`}>
@@ -56,6 +57,17 @@ const Navbar = () => {
               {link.label}
             </Link>
           ))}
+          {latestSimulation?.referencePublique && (
+            <Link
+              to={simulationPath(latestSimulation)}
+              className={`navbar-simulation-link ${simulationIsComplete ? 'is-complete' : ''}`}
+              title={`Voir ma simulation : ${latestSimulation.produit?.nom || latestSimulation.produit?.name || 'produit sélectionné'}`}
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              <span aria-hidden="true">{simulationIsComplete ? '✓' : '⏳'}</span>
+              {simulationIsComplete ? 'Résultat prêt' : 'Ma simulation'}
+            </Link>
+          )}
         </div>
 
         <button

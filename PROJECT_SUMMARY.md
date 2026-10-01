@@ -1,9 +1,9 @@
-# � GUIDE COMPLET DU PROJET ENERGIEPLUS
+# � GUIDE COMPLET DU PROJET ECORENO+
 ## Pour Débutants React - Explication Technique Complète
 
 ## 🎯 Vue d'ensemble
 
-**EnergiePlus** est une plateforme web React moderne pour la transition énergétique en Belgique, destinée aux particuliers et aux sociétés.
+**EcoReno+** est une plateforme web React moderne pour la transition énergétique en Belgique, destinée aux particuliers et aux sociétés.
 
 ### Caractéristiques principales
 
@@ -382,7 +382,7 @@ POST   /api/primes/calculate
 
 ## 📞 Support & Contact
 
-**Email** : info@energieplus.be  
+**Email** : info@ecoreno.be  
 **Téléphone** : +32 2 123 45 67  
 
 **Documentation** :

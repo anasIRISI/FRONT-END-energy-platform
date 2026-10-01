@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import ecoRenoLogo from '../../assets/ecoreno-logo.jpeg';
 import './Footer.css';
 
 const Footer = () => {
@@ -7,7 +8,7 @@ const Footer = () => {
       <div className="container">
         <div className="footer-grid">
           <div className="footer-section">
-            <h3>EnergiePlus</h3>
+            <img src={ecoRenoLogo} alt="EcoReno+" className="footer-logo" />
             <p>Votre partenaire énergie durable en Belgique</p>
           </div>
 
@@ -31,7 +32,7 @@ const Footer = () => {
           <div className="footer-section">
             <h4>Contact</h4>
             <ul>
-              <li>info@energieplus.be</li>
+              <li>info@ecoreno.be</li>
               <li>+32 2 123 45 67</li>
               <li><Link to="/admin/login" className="admin-link">🔐 Espace Admin</Link></li>
             </ul>
@@ -39,7 +40,7 @@ const Footer = () => {
         </div>
 
         <div className="footer-bottom">
-          <p>&copy; 2026 EnergiePlus. Tous droits réservés.</p>
+          <p>&copy; 2026 EcoReno+. Tous droits réservés.</p>
         </div>
       </div>
     </footer>

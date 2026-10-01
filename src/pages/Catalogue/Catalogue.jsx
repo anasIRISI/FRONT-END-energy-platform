@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { formPath, productPath } from '../../utils/routes';
 import { productCategories, getProductsByType } from '../../data/products';
 import { getProducts } from '../../services/api';
 import './Catalogue.css';
@@ -78,20 +79,16 @@ const Catalogue = () => {
                   </ul>
                 </div>
                 <div className="product-footer">
-                  <div className="product-price">
-                    <span className="price-label">À partir de</span>
-                    <span className="price-value">{product.price.toLocaleString('fr-BE')} €</span>
-                  </div>
                   <div className="product-actions">
                     <button
                       className="btn btn-secondary"
-                      onClick={() => navigate(`/produit/${product.id}`)}
+                      onClick={() => navigate(productPath(product))}
                     >
                       Détails
                     </button>
                     <button
                       className="btn btn-primary"
-                      onClick={() => navigate(`/formulaire/${product.id}`)}
+                      onClick={() => navigate(formPath(product))}
                     >
                       Simuler
                     </button>
@@ -108,7 +105,9 @@ const Catalogue = () => {
           <div className="help-card card">
             <h2>Besoin d'aide pour choisir ?</h2>
             <p>Notre assistant IA peut vous guider vers le produit le plus adapté à vos besoins</p>
-            <button className="btn btn-primary">Parler à l'assistant</button>
+            <button className="btn btn-primary" onClick={() => window.dispatchEvent(new Event('energieplus:open-luna'))}>
+              Parler à l'assistant
+            </button>
           </div>
         </div>
       </section>

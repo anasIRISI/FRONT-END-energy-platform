@@ -1,13 +1,24 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { validateFormData, generateSimulation } from '../../utils/simulation';
-import { submitForm, createSimulation } from '../../services/api';
+import { isStrictlyPositiveNumber, validateFormData } from '../../utils/simulation';
+import {
+  createSimulation,
+  findCompatibleBackendProduct,
+  getBackendProducts,
+  getLatestSimulationForProduct,
+  rememberSimulation,
+  submitForm,
+} from '../../services/api';
+import { productSlug as toProductSlug, simulationPath } from '../../utils/routes';
 import './Formulaire.css';
 
 const Formulaire = () => {
-  const { productId } = useParams();
+  const { productSlug } = useParams();
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState('');
+  const [previousSimulation, setPreviousSimulation] = useState(null);
+  const [pendingProductId, setPendingProductId] = useState(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
     profil: '',
@@ -16,6 +27,22 @@ const Formulaire = () => {
     email: '',
     telephone: '',
     typeLogement: '',
+    chauffage: '',
+    tarifMode: '',
+    tarifKwh: '',
+    niveauIsolation: '',
+    anneeBatiment: '',
+    scorePebOfficiel: '',
+    demanderEstimationPrime: false,
+    anneeConstruction: '',
+    surfaceTravauxM2: '',
+    coutTravauxTtc: '',
+    statutDemandeur: '',
+    categorieRevenus: '',
+    categorieRevenusFlandre: '',
+    coutTravauxHtva: '',
+    entrepreneurEnregistre: '',
+    isolantBiosource: 'non',
     surfaceHabitable: '',
     raisonSociale: '',
     numeroTVA: '',
@@ -29,6 +56,7 @@ const Formulaire = () => {
   const totalSteps = 6; // Ajout d'une étape pour le besoin énergétique
 
   const handleInputChange = (field, value) => {
+    setSubmissionError('');
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -57,51 +85,105 @@ const Formulaire = () => {
     }
   };
 
-  const handleSubmit = async () => {
-    setSubmitting(true);
-    let recommendedProductId = productId ? parseInt(productId) : 1;
-    
-    if (!productId) {
-      if (formData.besoinEnergetique === 'panneaux') {
-        recommendedProductId = formData.consommationActuelle > 4000 ? 1 : 2;
-      } else if (formData.besoinEnergetique === 'batterie') {
-        recommendedProductId = formData.consommationActuelle > 4000 ? 3 : 4;
-      } else if (formData.besoinEnergetique === 'pompe') {
-        recommendedProductId = formData.profil === 'societe' ? 5 : 6;
-      } else {
-        recommendedProductId = 1;
+  const resolveSelectedProductId = async () => {
+    if (productSlug !== undefined) {
+      const backendProducts = await getBackendProducts();
+      const selectedProduct = backendProducts.find((product) => toProductSlug(product) === productSlug);
+      if (!selectedProduct) {
+        throw new Error('Le produit sélectionné depuis le catalogue est invalide.');
       }
+      return selectedProduct.id;
     }
 
+    const backendProducts = await getBackendProducts();
+    const compatibleProduct = findCompatibleBackendProduct(backendProducts, formData.besoinEnergetique);
+
+    if (!compatibleProduct) {
+      const needLabels = {
+        panneaux: 'panneaux solaires',
+        batterie: 'batterie',
+        pompe: 'pompe à chaleur',
+        isolation: 'isolation de toiture',
+      };
+      const label = needLabels[formData.besoinEnergetique];
+      throw new Error(label
+        ? `Aucun produit backend compatible avec le besoin « ${label} » n’est disponible.`
+        : 'Sélectionnez un besoin précis (panneaux, batterie ou pompe à chaleur) pour créer la simulation.');
+    }
+
+    return compatibleProduct.id;
+  };
+
+  const createNewSimulation = async (selectedProductId) => {
+    // 1. Envoi au backend Spring Boot (création visiteur, formulaire et réponses).
+    const formRes = await submitForm(formData);
+    if (!formRes?.id) {
+      throw new Error('Le backend n’a pas retourné l’identifiant du formulaire créé.');
+    }
+
+    // 2. La simulation n'est demandée qu'après la sauvegarde réussie des réponses.
+    const backendSimulation = await createSimulation(formRes.id, selectedProductId);
+    if (!backendSimulation?.id) {
+      throw new Error('Le backend n’a pas retourné l’identifiant de la simulation créée.');
+    }
+
+    rememberSimulation(backendSimulation);
+    navigate(simulationPath(backendSimulation), {
+      state: { simulation: backendSimulation },
+    });
+  };
+
+  const formatSubmissionError = (error) => {
+    const backendError = error.response?.data;
+    const details = backendError?.errors && typeof backendError.errors === 'object'
+      ? Object.values(backendError.errors).flat().join(' ')
+      : '';
+    return details || backendError?.message || backendError?.detail || error.message || 'La simulation n’a pas pu être créée.';
+  };
+
+  const handleSubmit = async () => {
+    if (!isStrictlyPositiveNumber(formData.surfaceHabitable) || !isStrictlyPositiveNumber(formData.consommationActuelle)) {
+      setSubmissionError('La surface et la consommation annuelle doivent être des nombres strictement positifs.');
+      setCurrentStep(4);
+      return;
+    }
+
+    setSubmissionError('');
+    setSubmitting(true);
+
     try {
-      // 1. Envoi au backend Spring Boot (Création Visiteur + Formulaire)
-      const formRes = await submitForm(formData);
-      
-      // 2. Création de la demande de simulation dans Spring Boot si possible
-      let backendSimulation = null;
-      if (formRes && formRes.id) {
-        try {
-          backendSimulation = await createSimulation(formRes.id, recommendedProductId);
-        } catch (simErr) {
-          console.warn('Création simulation API échouée, fallback local:', simErr);
-        }
+      const selectedProductId = await resolveSelectedProductId();
+      const previousResult = getLatestSimulationForProduct(selectedProductId);
+
+      if (previousResult) {
+        setPendingProductId(selectedProductId);
+        setPreviousSimulation(previousResult);
+        return;
       }
 
-      // 3. Obtenir simulation locale fallback au cas où
-      const localSimulation = generateSimulation(formData, recommendedProductId);
-      const simulationId = backendSimulation?.id || formRes?.id || localSimulation.id;
-
-      navigate(`/simulation/${simulationId}`, {
-        state: { simulation: backendSimulation || localSimulation },
-      });
+      await createNewSimulation(selectedProductId);
     } catch (error) {
       console.error('Erreur lors de la soumission du formulaire:', error);
-      const localSimulation = generateSimulation(formData, recommendedProductId);
-      navigate(`/simulation/${localSimulation.id}`, {
-        state: { simulation: localSimulation },
-      });
+      setSubmissionError(formatSubmissionError(error));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleRecalculate = async () => {
+    if (!pendingProductId) return;
+
+    setPreviousSimulation(null);
+    setSubmissionError('');
+    setSubmitting(true);
+    try {
+      await createNewSimulation(pendingProductId);
+    } catch (error) {
+      console.error('Erreur lors du recalcul de la simulation:', error);
+      setSubmissionError(formatSubmissionError(error));
+    } finally {
+      setSubmitting(false);
+      setPendingProductId(null);
     }
   };
 
@@ -282,7 +364,7 @@ const Formulaire = () => {
                   </div>
                   {formData.profil === 'particulier' && (
                     <div className="form-group">
-                      <label>Type de logement</label>
+                      <label>Type de logement *</label>
                       <select
                         value={formData.typeLogement}
                         onChange={(e) => handleInputChange('typeLogement', e.target.value)}
@@ -294,23 +376,109 @@ const Formulaire = () => {
                     </div>
                   )}
                   <div className="form-group">
-                    <label>Surface habitable (m²)</label>
+                    <label>Surface habitable (m²) *</label>
                     <input
                       type="number"
+                      min="0"
+                      step="any"
+                      required
                       value={formData.surfaceHabitable}
                       onChange={(e) => handleInputChange('surfaceHabitable', e.target.value)}
                       placeholder="150"
                     />
+                    {formData.surfaceHabitable !== '' && !isStrictlyPositiveNumber(formData.surfaceHabitable) && (
+                      <p className="field-error">Saisissez une surface strictement positive.</p>
+                    )}
                   </div>
                   <div className="form-group">
-                    <label>Consommation électrique annuelle (kWh) *</label>
+                    <label>Consommation annuelle d’énergie (kWh) *</label>
                     <input
                       type="number"
+                      min="0"
+                      step="any"
+                      required
                       value={formData.consommationActuelle}
                       onChange={(e) => handleInputChange('consommationActuelle', e.target.value)}
                       placeholder="3500"
                     />
+                    {formData.consommationActuelle !== '' && !isStrictlyPositiveNumber(formData.consommationActuelle) && (
+                      <p className="field-error">Saisissez une consommation strictement positive.</p>
+                    )}
                   </div>
+                  <div className="form-group">
+                    <label>Chauffage principal *</label>
+                    <select value={formData.chauffage} onChange={(e) => handleInputChange('chauffage', e.target.value)}>
+                      <option value="">Sélectionnez</option><option value="gaz">Gaz naturel</option><option value="electricite">Électricité</option><option value="pompe_chaleur">Pompe à chaleur</option><option value="mazout">Mazout</option><option value="inconnu">Je ne sais pas</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Niveau actuel d’isolation de la toiture *</label>
+                    <select value={formData.niveauIsolation} onChange={(e) => handleInputChange('niveauIsolation', e.target.value)}>
+                      <option value="">Sélectionnez</option><option value="aucune">Aucune isolation visible</option><option value="faible">Isolation ancienne ou faible</option><option value="recente">Isolation récente</option><option value="inconnu">Je ne sais pas</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Année approximative de construction *</label>
+                    <select value={formData.anneeBatiment} onChange={(e) => handleInputChange('anneeBatiment', e.target.value)}>
+                      <option value="">Sélectionnez</option><option value="avant_1970">Avant 1970</option><option value="1970_1990">1970 à 1990</option><option value="1991_2010">1991 à 2010</option><option value="apres_2010">Après 2010</option><option value="inconnu">Je ne sais pas</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Score PEB / EPC officiel (kWh/m².an) <span className="optional-label">facultatif</span></label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={formData.scorePebOfficiel}
+                      onChange={(e) => handleInputChange('scorePebOfficiel', e.target.value)}
+                      placeholder="Ex. 254"
+                    />
+                    <p className="form-hint">Recopiez uniquement la valeur de votre certificat. Elle améliore la comparaison régionale et n’est pas envoyée avec votre adresse.</p>
+                  </div>
+                  <div className="form-group">
+                    <label>Prix de l’énergie *</label>
+                    <select value={formData.tarifMode} onChange={(e) => handleInputChange('tarifMode', e.target.value)}>
+                      <option value="">Sélectionnez</option><option value="facture">Je le saisis depuis ma facture</option><option value="inconnu">Je ne le connais pas</option>
+                    </select>
+                    {formData.tarifMode === 'facture' && <input type="number" min="0" step="0.001" required value={formData.tarifKwh} onChange={(e) => handleInputChange('tarifKwh', e.target.value)} placeholder="Ex. 0,30 €/kWh" />}
+                    <p className="form-hint">Le prix €/kWh est indiqué sur votre facture. Sans ce prix, l’application affichera seulement une économie en kWh.</p>
+                  </div>
+                  {formData.region === 'Wallonie' && (
+                    <div className="prime-profile-section">
+                      <label className="prime-profile-toggle">
+                        <input type="checkbox" checked={formData.demanderEstimationPrime} onChange={(event) => handleInputChange('demanderEstimationPrime', event.target.checked)} />
+                        Estimer ma prime régionale (facultatif)
+                      </label>
+                      <p className="form-hint">Nous demandons une catégorie de revenus, jamais votre revenu exact. Ces informations sont optionnelles : vous pouvez continuer la simulation même si elles ne sont pas encore complétées.</p>
+                      {formData.demanderEstimationPrime && (
+                        <div className="prime-profile-fields">
+                          <div className="form-group"><label>Année de construction *</label><input type="number" min="1800" max="2026" value={formData.anneeConstruction} onChange={(event) => handleInputChange('anneeConstruction', event.target.value)} placeholder="Ex. 1995" /></div>
+                          <div className="form-group"><label>Surface de toiture à isoler (m²) *</label><input type="number" min="1" step="any" value={formData.surfaceTravauxM2} onChange={(event) => handleInputChange('surfaceTravauxM2', event.target.value)} placeholder="Ex. 100" /></div>
+                          <div className="form-group"><label>Montant TTC du devis (€) *</label><input type="number" min="1" step="0.01" value={formData.coutTravauxTtc} onChange={(event) => handleInputChange('coutTravauxTtc', event.target.value)} placeholder="Ex. 5 400" /></div>
+                          <div className="form-group"><label>Votre statut *</label><select value={formData.statutDemandeur} onChange={(event) => handleInputChange('statutDemandeur', event.target.value)}><option value="">Sélectionnez</option><option value="proprietaire">Propriétaire</option><option value="usufruitier">Usufruitier</option><option value="copropriete">Copropriété</option><option value="inconnu">Je ne sais pas</option></select></div>
+                          <div className="form-group"><label>Catégorie de revenus wallonne *</label><select value={formData.categorieRevenus} onChange={(event) => handleInputChange('categorieRevenus', event.target.value)}><option value="">Sélectionnez</option><option value="r1">R1 — jusqu’à 28 900 €</option><option value="r2">R2 — 28 900 à 41 100 €</option><option value="r3">R3 — 41 100 à 54 300 €</option><option value="r4">R4 — 54 300 à 122 800 €</option><option value="inconnu">Je ne sais pas</option></select></div>
+                          <div className="form-group"><label>Entrepreneur enregistré ? *</label><select value={formData.entrepreneurEnregistre} onChange={(event) => handleInputChange('entrepreneurEnregistre', event.target.value)}><option value="">Sélectionnez</option><option value="oui">Oui</option><option value="non">Non ou je ne sais pas</option></select></div>
+                          <div className="form-group"><label>Isolant biosourcé ?</label><select value={formData.isolantBiosource} onChange={(event) => handleInputChange('isolantBiosource', event.target.value)}><option value="non">Non ou je ne sais pas</option><option value="oui">Oui</option></select></div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {formData.region === 'Flandre' && (
+                    <div className="prime-profile-section">
+                      <label className="prime-profile-toggle">
+                        <input type="checkbox" checked={formData.demanderEstimationPrime} onChange={(event) => handleInputChange('demanderEstimationPrime', event.target.checked)} />
+                        Estimer ma Mijn VerbouwPremie (facultatif)
+                      </label>
+                      <p className="form-hint">Nous demandons une catégorie, jamais votre revenu exact. Ces informations sont optionnelles : vous pouvez continuer la simulation même si elles ne sont pas encore complétées.</p>
+                      {formData.demanderEstimationPrime && (
+                        <div className="prime-profile-fields">
+                          <div className="form-group"><label>Montant TTC du devis (€) *</label><input type="number" min="1" step="0.01" value={formData.coutTravauxTtc} onChange={(event) => handleInputChange('coutTravauxTtc', event.target.value)} placeholder="Ex. 5 400" /></div>
+                          <div className="form-group"><label>Montant HTVA du devis (€) *</label><input type="number" min="1" step="0.01" value={formData.coutTravauxHtva} onChange={(event) => handleInputChange('coutTravauxHtva', event.target.value)} placeholder="Ex. 4 500" /></div>
+                          <div className="form-group"><label>Catégorie flamande *</label><select value={formData.categorieRevenusFlandre} onChange={(event) => handleInputChange('categorieRevenusFlandre', event.target.value)}><option value="">Sélectionnez</option><option value="f3">F3 — revenu bas</option><option value="f4">F4 — revenu le plus bas / location sociale</option><option value="autre">Autre catégorie</option></select></div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -344,6 +512,14 @@ const Formulaire = () => {
                     <div className="region-icon">🌡️</div>
                     <h3>Pompe à chaleur</h3>
                     <p>Chauffage et climatisation</p>
+                  </button>
+                  <button
+                    className={`region-card ${formData.besoinEnergetique === 'isolation' ? 'selected' : ''}`}
+                    onClick={() => handleInputChange('besoinEnergetique', 'isolation')}
+                  >
+                    <div className="region-icon">🏠</div>
+                    <h3>Isolation toiture</h3>
+                    <p>Confort et réduction des pertes de chaleur</p>
                   </button>
                   <button
                     className={`region-card ${formData.besoinEnergetique === 'tout' ? 'selected' : ''}`}
@@ -402,12 +578,32 @@ const Formulaire = () => {
                 <button
                   className="btn btn-primary"
                   onClick={handleSubmit}
-                  disabled={!canProceedToNextStep()}
+                  disabled={submitting || !canProceedToNextStep()}
                 >
-                  Voir ma simulation
+                  {submitting ? 'Création de la simulation...' : 'Voir ma simulation'}
                 </button>
               )}
             </div>
+            {submissionError && <p className="form-submission-error" role="alert">{submissionError}</p>}
+            {previousSimulation && (
+              <div className="previous-simulation-card" role="dialog" aria-labelledby="previous-simulation-title">
+                <h3 id="previous-simulation-title">Une simulation existe déjà pour ce produit</h3>
+                <p>
+                  Consultez votre dernier résultat ou créez un nouveau calcul avec les informations que vous venez de saisir.
+                </p>
+                <div className="previous-simulation-actions">
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => navigate(simulationPath(previousSimulation), { state: { simulation: previousSimulation } })}
+                  >
+                    Voir le résultat précédent
+                  </button>
+                  <button className="btn btn-primary" onClick={handleRecalculate} disabled={submitting}>
+                    {submitting ? 'Recalcul en cours...' : 'Recalculer'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -205,7 +205,20 @@ export const validateFormData = (formData, step) => {
       }
       return formData.raisonSociale && formData.numeroTVA && formData.email;
     case 4:
-      return formData.adresse && formData.consommationActuelle;
+      {
+        const baseProfileIsValid = Boolean(formData.adresse?.trim())
+        && (formData.profil !== 'particulier' || Boolean(formData.typeLogement))
+        && isStrictlyPositiveNumber(formData.surfaceHabitable)
+        && isStrictlyPositiveNumber(formData.consommationActuelle)
+        && Boolean(formData.chauffage)
+        && Boolean(formData.niveauIsolation)
+        && Boolean(formData.anneeBatiment)
+        && Boolean(formData.tarifMode)
+        && (formData.tarifMode !== 'facture' || isStrictlyPositiveNumber(formData.tarifKwh));
+        // La demande de prime est facultative : cocher cette case ne doit pas
+        // empêcher l'utilisateur de poursuivre la simulation.
+        return baseProfileIsValid;
+      }
     case 5:
       return formData.besoinEnergetique !== '';
     case 6:
@@ -213,4 +226,17 @@ export const validateFormData = (formData, step) => {
     default:
       return false;
   }
+};
+
+/**
+ * Accepte uniquement une valeur numérique finie et strictement positive.
+ * Les valeurs restent des chaînes dans le formulaire afin d'être envoyées au
+ * backend avec le format de réponse attendu.
+ */
+export const isStrictlyPositiveNumber = (value) => {
+  const normalizedValue = String(value ?? '').trim().replace(',', '.');
+  if (!/^\d+(?:\.\d+)?$/.test(normalizedValue)) return false;
+
+  const numericValue = Number(normalizedValue);
+  return Number.isFinite(numericValue) && numericValue > 0;
 };
